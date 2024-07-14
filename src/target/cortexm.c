@@ -560,6 +560,9 @@ bool cortexm_attach(target_s *target)
 	if ((watchpoints >> 28U) < priv->base.watchpoints_available)
 		priv->base.watchpoints_available = watchpoints >> 28U;
 
+	DEBUG_TARGET("%s %s core has %u breakpoint and %u watchpoint slots available\n", target->driver, target->core,
+		priv->base.breakpoints_available, priv->base.watchpoints_available);
+
 	/* Clear any stale breakpoints */
 	priv->base.breakpoints_mask = 0;
 	for (size_t i = 0; i < priv->base.breakpoints_available; i++)
