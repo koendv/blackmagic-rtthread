@@ -1,0 +1,52 @@
+diff --git a/src/platforms/common/stm32/swo_itm_decode.c b/src/platforms/common/stm32/swo_itm_decode.c
+index 7e79ff10..06e83e34 100644
+--- a/src/platforms/common/stm32/swo_itm_decode.c
++++ b/src/platforms/common/stm32/swo_itm_decode.c
+@@ -22,10 +22,16 @@
+  */
+ 
+ #include "general.h"
+-#include "usb_serial.h"
++#include "platform.h"
++#include "usb_desc.h"
++#include "usb_cdc.h"
+ #include "swo.h"
+ 
+-static uint8_t itm_decoded_buffer[CDCACM_PACKET_SIZE];
++#ifndef SWO_DECODE_SIZE
++#define SWO_DECODE_SIZE (CDC_MAX_MPS - 1)
++#endif
++
++static uint8_t itm_decoded_buffer[SWO_DECODE_SIZE];
+ static uint16_t itm_decoded_buffer_index = 0;
+ static uint32_t itm_decode_mask = 0;  /* bitmask of channels to print */
+ static uint8_t itm_packet_length = 0; /* decoder state */
+@@ -57,8 +63,7 @@ uint16_t swo_itm_decode(const uint8_t *data, uint16_t len)
+ 				/* If the buffer has filled up and needs flushing, try to flush the data to the serial endpoint */
+ 				if (itm_decoded_buffer_index == sizeof(itm_decoded_buffer)) {
+ 					/* However, if the link is not yet up, drop the packet data silently */
+-					if (usb_get_config() && gdb_serial_get_dtr())
+-						debug_serial_send_stdout(itm_decoded_buffer, itm_decoded_buffer_index);
++					cdc1_write(itm_decoded_buffer, itm_decoded_buffer_index);
+ 					itm_decoded_buffer_index = 0U;
+ 				}
+ 			}
+diff --git a/src/platforms/common/swo.h b/src/platforms/common/swo.h
+index b56e659d..027c1f92 100644
+--- a/src/platforms/common/swo.h
++++ b/src/platforms/common/swo.h
+@@ -51,12 +51,12 @@ void bmd_usart_set_baudrate(uint32_t usart, uint32_t baud_rate);
+ /* USB callback for the raw data endpoint to ask for a new buffer of data */
+ void swo_send_buffer(usbd_device *dev, uint8_t ep);
+ 
++#endif /* !NO_LIBOPENCM3 */
++
+ /* Set a bitmask of SWO ITM streams to be decoded */
+ void swo_itm_decode_set_mask(uint32_t mask);
+ 
+ /* Decode a new block of ITM data from SWO */
+ uint16_t swo_itm_decode(const uint8_t *data, uint16_t len);
+ 
+-#endif /* !NO_LIBOPENCM3 */
+-
+ #endif /* PLATFORMS_COMMON_SWO_H */
