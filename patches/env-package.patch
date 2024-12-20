@@ -1,0 +1,106 @@
+diff --git a/tools/Kconfig b/tools/Kconfig
+index 2684ca15..1a3035c2 100644
+--- a/tools/Kconfig
++++ b/tools/Kconfig
+@@ -48,4 +48,5 @@ source "$PKGS_DIR/packages/tools/vofa_plus/Kconfig"
+ source "$PKGS_DIR/packages/tools/RT_Trace/Kconfig"
+ source "$PKGS_DIR/packages/tools/zdebug/Kconfig"
+ source "$PKGS_DIR/packages/tools/RVBacktrace/Kconfig"
++source "$PKGS_DIR/packages/tools/blackmagic/Kconfig"
+ endmenu
+diff --git a/tools/blackmagic/Kconfig b/tools/blackmagic/Kconfig
+index e69de29b..3f2aa415 100644
+--- a/tools/blackmagic/Kconfig
++++ b/tools/blackmagic/Kconfig
+@@ -0,0 +1,59 @@
++# Kconfig file for package blackmagic
++menuconfig PKG_USING_BLACKMAGIC
++    bool "black magic debug: firmware download tool"
++    default n
++
++if PKG_USING_BLACKMAGIC
++
++    config PKG_BLACKMAGIC_PATH
++        string
++        default "/packages/tools/blackmagic"
++
++    config BLACKMAGIC_ENABLE_RTT
++        bool "rtt support"
++        default y
++        help
++            rtt (real-time terminal) allows terminal input/output between target and host
++
++    config BLACKMAGIC_ENABLE_RTT_IDENT
++        bool "rtt ident"
++        depends on BLACKMAGIC_ENABLE_RTT
++        default n
++        help
++            set optional rtt secret.
++
++    config BLACKMAGIC_RTT_IDENT
++        string "rtt ident"
++        depends on BLACKMAGIC_ENABLE_RTT_IDENT
++        default ""
++        help
++            optional rtt secret. '%' is converted to ' ' space.
++
++    config BLACKMAGIC_ENABLE_DEBUG
++        bool "debug output"
++        default n
++        help
++            If enabled, debug output is written to the aux port.
++            Useful when debugging blackmagic probe.
++
++    choice
++        prompt "Version"
++        help
++            Select the package version
++
++        config PKG_USING_BLACKMAGIC_LATEST_VERSION
++            bool "latest"
++    endchoice
++
++    config PKG_BLACKMAGIC_VER
++       string
++       default "v1.10.2"   if PKG_USING_BLACKMAGIC_V1_10_2
++       default "latest"    if PKG_USING_BLACKMAGIC_LATEST_VERSION
++
++    config BLACKMAGIC_VERSION
++        string
++        default PKG_BLACKMAGIC_VER
++        help
++            hidden string, follows PKG_BLACKMAGIC_VER, used in version.h
++
++endif
+diff --git a/tools/blackmagic/package.json b/tools/blackmagic/package.json
+index e69de29b..eb9d2b1e 100644
+--- a/tools/blackmagic/package.json
++++ b/tools/blackmagic/package.json
+@@ -0,0 +1,27 @@
++{
++  "name": "blackmagic",
++  "description": "firmware download tool",
++  "description_zh": "下载器",
++  "enable": "PKG_USING_BLACKMAGIC",
++  "keywords": [
++    "blackmagic"
++  ],
++  "category": "tools",
++  "author": {
++    "name": "koendv",
++    "email": "koen@kdvelectronics.eu",
++    "github": "koendv"
++  },
++  "license": "MIT",
++  "repository": "https://github.com/koendv/blackmagic-rtthread",
++  "homepage": "https://github.com/koendv/blackmagic-rtthread#README.md",
++  "doc": "https://black-magic.org/",
++  "site": [
++    {
++      "version": "latest",
++      "URL": "https://github.com/koendv/blackmagic-rtthread.git",
++      "filename": "",
++      "VER_SHA": "main"
++    }
++  ]
++}
