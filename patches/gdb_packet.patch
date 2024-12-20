@@ -1,0 +1,12 @@
+diff --git a/blackmagic/src/gdb_packet.c b/blackmagic/src/gdb_packet.c
+index acc0051..5166a32 100644
+--- a/blackmagic/src/gdb_packet.c
++++ b/blackmagic/src/gdb_packet.c
+@@ -24,6 +24,7 @@
+  */
+ 
+ #include "general.h"
++#include "platform.h"
+ #include "gdb_if.h"
+ #include "gdb_packet.h"
+ #include "hex_utils.h"

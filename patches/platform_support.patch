@@ -1,0 +1,13 @@
+diff --git a/blackmagic/src/include/platform_support.h b/blackmagic/src/include/platform_support.h
+index 5e04ceb..e308f1a 100644
+--- a/blackmagic/src/include/platform_support.h
++++ b/blackmagic/src/include/platform_support.h
+@@ -24,7 +24,7 @@
+ #error "Include 'general.h' instead"
+ #endif
+ 
+-#if CONFIG_BMDA == 0
++#ifdef INTEGER_ONLY_PRINTF
+ #include "stdio_newlib.h"
+ #endif
+ #include "target.h"
