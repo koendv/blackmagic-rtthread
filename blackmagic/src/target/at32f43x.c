@@ -313,7 +313,7 @@ static bool at32f405_detect(target_s *target, const uint32_t series)
 	 */
 	const uint16_t flash_size = target_mem32_read16(target, AT32F4x_FLASHSIZE);
 	const uint16_t sector_size = series == AT32F405_SERIES_128KB ? 1024U : 2048U;
-	at32f43_add_flash(target, 0x08000000, flash_size, sector_size, AT32F43x_FLASH_BANK1_REG_OFFSET);
+	at32f43_add_flash(target, 0x08000000, flash_size * 1024U, sector_size, AT32F43x_FLASH_BANK1_REG_OFFSET);
 
 	/*
 	 * Either 96 or 102 KiB of SRAM, depending on USD bit 7 nRAM_PRT_CHK:
