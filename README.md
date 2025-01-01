@@ -46,6 +46,10 @@ Two configuration files are needed: `platform.h, platform.c`
 
 Sample configuration files are in the `example/` directory. Copy to your project directory and edit.
 
+## swo
+
+Serial Wire Output (SWO) is a single pin, used for printf output. To implement SWO, set up a high-speed UART with dual-bank RX DMA and feed the received characters to swo_itm_decode(). In platform.h, set PLATFORM_HAS_TRACESWO. The patches/ directory contains a patch to compile swo_itm_decode() on rt-thread.
+
 ## updating black magic debug source
 
 A description how to update the git repository to the latest upstream _black magic debug_ version.
@@ -70,7 +74,7 @@ git add -u
 git status
 ```
 
-Check `src/target` for source files for new targets. Add new source files with *git add*.
+Check `src/target` for source files for targets. Add omissions with *git add*.
 
 Then push the update:
 
