@@ -51,12 +51,12 @@ void bmd_usart_set_baudrate(uint32_t usart, uint32_t baud_rate);
 /* USB callback for the raw data endpoint to ask for a new buffer of data */
 void swo_send_buffer(usbd_device *dev, uint8_t ep);
 
+#endif /* !NO_LIBOPENCM3 */
+
 /* Set a bitmask of SWO ITM streams to be decoded */
 void swo_itm_decode_set_mask(uint32_t mask);
 
 /* Decode a new block of ITM data from SWO */
 uint16_t swo_itm_decode(const uint8_t *data, uint16_t len);
-
-#endif /* !NO_LIBOPENCM3 */
 
 #endif /* PLATFORMS_COMMON_SWO_H */

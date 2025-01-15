@@ -21,11 +21,21 @@
  * It puts the decoded data onto the aux USB serial interface for consumption.
  */
 
+#include <rtconfig.h>
 #include "general.h"
-#include "usb_serial.h"
+#include "platform.h"
 #include "swo.h"
 
-static uint8_t itm_decoded_buffer[CDCACM_PACKET_SIZE];
+/* avoid having to send a zero-length packet */
+#ifndef SWO_DECODE_SIZE
+#ifdef RT_CHERRYUSB_DEVICE_SPEED_HS
+#define SWO_DECODE_SIZE (511)
+#else
+#define SWO_DECODE_SIZE (63)
+#endif
+#endif
+
+static uint8_t itm_decoded_buffer[SWO_DECODE_SIZE];
 static uint16_t itm_decoded_buffer_index = 0;
 static uint32_t itm_decode_mask = 0;  /* bitmask of channels to print */
 static uint8_t itm_packet_length = 0; /* decoder state */
@@ -57,8 +67,7 @@ uint16_t swo_itm_decode(const uint8_t *data, uint16_t len)
 				/* If the buffer has filled up and needs flushing, try to flush the data to the serial endpoint */
 				if (itm_decoded_buffer_index == sizeof(itm_decoded_buffer)) {
 					/* However, if the link is not yet up, drop the packet data silently */
-					if (usb_get_config() && gdb_serial_get_dtr())
-						debug_serial_send_stdout(itm_decoded_buffer, itm_decoded_buffer_index);
+					debug_serial_send_stdout(itm_decoded_buffer, itm_decoded_buffer_index);
 					itm_decoded_buffer_index = 0U;
 				}
 			}
