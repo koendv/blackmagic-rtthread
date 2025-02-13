@@ -1,0 +1,117 @@
+diff --git a/src/command.c b/src/command.c
+index 52a60c6c..a0c734de 100644
+--- a/src/command.c
++++ b/src/command.c
+@@ -48,7 +48,6 @@
+ #ifdef PLATFORM_HAS_TRACESWO
+ #include "serialno.h"
+ #include "swo.h"
+-#include "usb.h"
+ #endif
+ 
+ static bool cmd_version(target_s *target, int argc, const char **argv);
+@@ -699,8 +698,6 @@ static bool cmd_swo_enable(int argc, const char **argv)
+ 		gdb_outf("%c", bit);
+ 	}
+ 	gdb_outf("\n");
+-	/* Then the connection information for programs that are scraping BMD's output to know what to connect to */
+-	gdb_outf("Trace enabled for BMP serial %s, USB EP %u\n", serial_no, SWO_ENDPOINT);
+ 	return true;
+ }
+ 
+diff --git a/src/gdb_packet.c b/src/gdb_packet.c
+index 420ed3f3..36d59e98 100644
+--- a/src/gdb_packet.c
++++ b/src/gdb_packet.c
+@@ -24,6 +24,7 @@
+  */
+ 
+ #include "general.h"
++#include "platform.h"
+ #include "gdb_if.h"
+ #include "gdb_packet.h"
+ #include "hex_utils.h"
+diff --git a/src/include/general.h b/src/include/general.h
+index 34278e94..94fd30fc 100644
+--- a/src/include/general.h
++++ b/src/include/general.h
+@@ -21,6 +21,9 @@
+ #ifndef INCLUDE_GENERAL_H
+ #define INCLUDE_GENERAL_H
+ 
++#include <time.h>
++#include <strings.h>
++
+ #if !defined(__cplusplus) && defined(__STDC__)
+ #if __STDC__ == 1
+ #define BMD_IS_STDC 1
+diff --git a/src/include/platform_support.h b/src/include/platform_support.h
+index 3c1c009a..1e51b885 100644
+--- a/src/include/platform_support.h
++++ b/src/include/platform_support.h
+@@ -24,7 +24,7 @@
+ #error "Include 'general.h' instead"
+ #endif
+ 
+-#if CONFIG_BMDA == 0
++#ifdef INTEGER_ONLY_PRINTF
+ #include "stdio_newlib.h"
+ #endif
+ #include "target.h"
+diff --git a/src/platforms/common/stm32/swo_itm_decode.c b/src/platforms/common/stm32/swo_itm_decode.c
+index 7e79ff10..31c2a77b 100644
+--- a/src/platforms/common/stm32/swo_itm_decode.c
++++ b/src/platforms/common/stm32/swo_itm_decode.c
+@@ -21,11 +21,21 @@
+  * It puts the decoded data onto the aux USB serial interface for consumption.
+  */
+ 
++#include <rtconfig.h>
+ #include "general.h"
+-#include "usb_serial.h"
++#include "platform.h"
+ #include "swo.h"
+ 
+-static uint8_t itm_decoded_buffer[CDCACM_PACKET_SIZE];
++/* avoid having to send a zero-length packet */
++#ifndef SWO_DECODE_SIZE
++#ifdef RT_CHERRYUSB_DEVICE_SPEED_HS
++#define SWO_DECODE_SIZE (511)
++#else
++#define SWO_DECODE_SIZE (63)
++#endif
++#endif
++
++static uint8_t itm_decoded_buffer[SWO_DECODE_SIZE];
+ static uint16_t itm_decoded_buffer_index = 0;
+ static uint32_t itm_decode_mask = 0;  /* bitmask of channels to print */
+ static uint8_t itm_packet_length = 0; /* decoder state */
+@@ -57,8 +67,7 @@ uint16_t swo_itm_decode(const uint8_t *data, uint16_t len)
+ 				/* If the buffer has filled up and needs flushing, try to flush the data to the serial endpoint */
+ 				if (itm_decoded_buffer_index == sizeof(itm_decoded_buffer)) {
+ 					/* However, if the link is not yet up, drop the packet data silently */
+-					if (usb_get_config() && gdb_serial_get_dtr())
+-						debug_serial_send_stdout(itm_decoded_buffer, itm_decoded_buffer_index);
++					debug_serial_send_stdout(itm_decoded_buffer, itm_decoded_buffer_index);
+ 					itm_decoded_buffer_index = 0U;
+ 				}
+ 			}
+diff --git a/src/platforms/common/swo.h b/src/platforms/common/swo.h
+index b56e659d..027c1f92 100644
+--- a/src/platforms/common/swo.h
++++ b/src/platforms/common/swo.h
+@@ -51,12 +51,12 @@ void bmd_usart_set_baudrate(uint32_t usart, uint32_t baud_rate);
+ /* USB callback for the raw data endpoint to ask for a new buffer of data */
+ void swo_send_buffer(usbd_device *dev, uint8_t ep);
+ 
++#endif /* !NO_LIBOPENCM3 */
++
+ /* Set a bitmask of SWO ITM streams to be decoded */
+ void swo_itm_decode_set_mask(uint32_t mask);
+ 
+ /* Decode a new block of ITM data from SWO */
+ uint16_t swo_itm_decode(const uint8_t *data, uint16_t len);
+ 
+-#endif /* !NO_LIBOPENCM3 */
+-
+ #endif /* PLATFORMS_COMMON_SWO_H */
