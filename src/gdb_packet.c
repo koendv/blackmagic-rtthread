@@ -24,6 +24,7 @@
  */
 
 #include "general.h"
+#include "platform.h"
 #include "gdb_if.h"
 #include "gdb_packet.h"
 #include "hex_utils.h"

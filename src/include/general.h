@@ -21,6 +21,9 @@
 #ifndef INCLUDE_GENERAL_H
 #define INCLUDE_GENERAL_H
 
+#include <time.h>
+#include <strings.h>
+
 #if !defined(__cplusplus) && defined(__STDC__)
 #if __STDC__ == 1
 #define BMD_IS_STDC 1
