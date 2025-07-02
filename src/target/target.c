@@ -347,7 +347,7 @@ bool target_mem64_write(target_s *const target, const target_addr64_t dest, cons
 /* Returns true if the target needs halting to access memory on it */
 bool target_mem_access_needs_halt(target_s *target)
 {
-	return !(target->target_options & TOPT_NON_HALTING_MEM_IO);
+	return (target->target_options & TOPT_HALTING_MEM_IO);
 }
 
 /* Register access functions */

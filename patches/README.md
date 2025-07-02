@@ -1,8 +1,14 @@
 # PATCHES
 
+These are patches to black magic debug
+
 - **port-rtthread.patch**
-patch to black magic to compile as rt-thread package
+rt-thread port
 
 - **memwatch.patch**
-patch to black magic to add software watchpoints. See docs/UsingMemwatch.md
+software watchpoints. adds "mon memwatch" gdb command. See docs/UsingMemwatch.md
+
+- **rtt_halt.patch**
+adds "mon rtt halt [enable|disable|auto]" gdb command.
+allows user to force halting/not halting target processor within rtt. 
 

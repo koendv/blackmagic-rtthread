@@ -48,6 +48,8 @@ extern bool rtt_auto_channel;                  // manual or auto channel selecti
 extern bool rtt_flag_skip;                     // skip if host-to-target fifo full
 extern bool rtt_flag_block;                    // block if host-to-target fifo full
 extern bool rtt_channel_enabled[MAX_RTT_CHAN]; // true if user wants to see channel
+extern bool rtt_halt;                          // true if rtt needs to halt target to access memory
+extern bool rtt_halt_override;                 // true if rtt_halt set by user
 
 typedef struct rtt_channel {
 	uint32_t name_addr;

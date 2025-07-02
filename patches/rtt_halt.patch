@@ -1,0 +1,139 @@
+commit f36961f8cb48695fbea2e504ce6e7fb8b124e703
+Author: Koen De Vleeschauwer <kdv@kdvelectronics.eu>
+Date:   Wed Jul 2 12:53:42 2025 +0200
+
+    rtt halt
+
+diff --git a/src/command.c b/src/command.c
+index c493515d..4096cc2a 100644
+--- a/src/command.c
++++ b/src/command.c
+@@ -117,7 +117,7 @@ const command_s cmd_list[] = {
+ #ifdef ENABLE_RTT
+ 	{"rtt", cmd_rtt,
+ 		"[enable|disable|status|channel [0..15 ...]|ident [STR]|cblock|ram [RAM_START RAM_END]|poll [MAXMS MINMS "
+-		"MAXERR]]"},
++		"MAXERR]]|halt [enable|disable|auto]"},
+ #endif
+ #ifdef PLATFORM_HAS_TRACESWO
+ #if SWO_ENCODING == 1
+@@ -616,6 +616,23 @@ static bool cmd_rtt(target_s *target, int argc, const char **argv)
+ 				rtt_channel_enabled[i] ? 'y' : 'n', i < rtt_num_up_chan ? "out" : "in ", rtt_channel[i].buf_addr,
+ 				rtt_channel[i].buf_size, rtt_channel[i].head, rtt_channel[i].tail, rtt_channel[i].flag);
+ 		}
++	} else if (argc == 2 && strncmp(argv[1], "halt", command_len) == 0) {
++		gdb_outf("halt: %s\n", rtt_halt_override ? (rtt_halt ? "enabled" : "disabled") : "auto");
++	} else if (argc == 3 && strncmp(argv[1], "halt", command_len) == 0) {
++		const size_t value_len = strlen(argv[2]);
++		if (value_len && !strncmp(argv[2], "enable", value_len)) {
++			rtt_halt_override = true;
++			rtt_halt = true;
++		} else if (value_len && !strncmp(argv[2], "disable", value_len)) {
++			rtt_halt_override = true;
++			rtt_halt = false;
++		} else if (value_len && !strncmp(argv[2], "auto", value_len)) {
++			rtt_halt_override = false;
++			rtt_halt = false;
++		} else {
++			gdb_out("what?\n");
++		}
++		return true;
+ 	} else if (argc == 3 && strncmp(argv[1], "ident", command_len) == 0) {
+ 		strncpy(rtt_ident, argv[2], sizeof(rtt_ident));
+ 		rtt_ident[sizeof(rtt_ident) - 1U] = '\0';
+diff --git a/src/include/rtt.h b/src/include/rtt.h
+index 87b54378..aaa03e0d 100644
+--- a/src/include/rtt.h
++++ b/src/include/rtt.h
+@@ -48,6 +48,8 @@ extern bool rtt_auto_channel;                  // manual or auto channel selecti
+ extern bool rtt_flag_skip;                     // skip if host-to-target fifo full
+ extern bool rtt_flag_block;                    // block if host-to-target fifo full
+ extern bool rtt_channel_enabled[MAX_RTT_CHAN]; // true if user wants to see channel
++extern bool rtt_halt;                          // true if rtt needs to halt target to access memory
++extern bool rtt_halt_override;                 // true if rtt_halt set by user
+ 
+ typedef struct rtt_channel {
+ 	uint32_t name_addr;
+diff --git a/src/rtt.c b/src/rtt.c
+index d52f7767..e00b6b23 100644
+--- a/src/rtt.c
++++ b/src/rtt.c
+@@ -34,7 +34,8 @@
+ 
+ bool rtt_enabled = false;
+ bool rtt_found = false;
+-static bool rtt_halt = false; // true if rtt needs to halt target to access memory
++bool rtt_halt = false;          // true if rtt needs to halt target to access memory
++bool rtt_halt_override = false; // true if rtt_halt set by user
+ uint32_t rtt_cbaddr = 0;
+ uint32_t rtt_num_up_chan = 0;
+ uint32_t rtt_num_down_chan = 0;
+@@ -389,7 +390,7 @@ void poll_rtt(target_s *const cur_target)
+ 	uint32_t now = platform_time_ms();
+ 
+ 	if (last_poll_ms + rtt_poll_ms <= now || now < last_poll_ms) {
+-		if (!rtt_found)
++		if (!rtt_found && !rtt_halt_override)
+ 			/* check if target needs to be halted during memory access */
+ 			rtt_halt = target_mem_access_needs_halt(cur_target);
+ 
+diff --git a/src/target/lmi.c b/src/target/lmi.c
+index a3046037..92b294ac 100644
+--- a/src/target/lmi.c
++++ b/src/target/lmi.c
+@@ -155,6 +155,7 @@ bool tm4c_probe(target_s *const target, const uint16_t did1)
+ 		 * only use the AIRCR SYSRESETREQ.
+ 		 */
+ 		target->target_options |= TOPT_INHIBIT_NRST;
++		target->target_options |= TOPT_HALTING_MEM_IO;
+ 		break;
+ 	case DID1_TM4C1230C3PM:
+ 		target_add_ram32(target, 0x20000000, 0x6000);
+diff --git a/src/target/riscv_debug.c b/src/target/riscv_debug.c
+index b16d60a1..a889e0f4 100644
+--- a/src/target/riscv_debug.c
++++ b/src/target/riscv_debug.c
+@@ -946,6 +946,8 @@ static void riscv_hart_memory_access_type(target_s *const target)
+ 	riscv_hart_s *const hart = riscv_hart_struct(target);
+ 	hart->flags &= (uint8_t)~RV_HART_FLAG_MEMORY_SYSBUS;
+ 	uint32_t sysbus_status;
++	/* default for risv is halting processor when reading target memory */
++	target->target_options |= TOPT_HALTING_MEM_IO;
+ 	/*
+ 	 * Try reading the system bus access control and status register.
+ 	 * Check if the value read back is non-zero for the sbasize field
+@@ -956,7 +958,7 @@ static void riscv_hart_memory_access_type(target_s *const target)
+ 	/* If all the checks passed, we now have a valid system bus so can proceed with using it for memory access */
+ 	hart->flags = RV_HART_FLAG_MEMORY_SYSBUS | (sysbus_status & RV_HART_FLAG_ACCESS_WIDTH_MASK);
+ 	/* System Bus also means the target can have memory read without halting */
+-	target->target_options |= TOPT_NON_HALTING_MEM_IO;
++	target->target_options &= ~TOPT_HALTING_MEM_IO;
+ 	/* Make sure the system bus is not in any kind of error state */
+ 	(void)riscv_dm_write(hart->dbg_module, RV_DM_SYSBUS_CTRLSTATUS, 0x00407000U);
+ }
+diff --git a/src/target/target.c b/src/target/target.c
+index 3e4b2f36..9a22c65d 100644
+--- a/src/target/target.c
++++ b/src/target/target.c
+@@ -347,7 +347,7 @@ bool target_mem64_write(target_s *const target, const target_addr64_t dest, cons
+ /* Returns true if the target needs halting to access memory on it */
+ bool target_mem_access_needs_halt(target_s *target)
+ {
+-	return !(target->target_options & TOPT_NON_HALTING_MEM_IO);
++	return (target->target_options & TOPT_HALTING_MEM_IO);
+ }
+ 
+ /* Register access functions */
+diff --git a/src/target/target_internal.h b/src/target/target_internal.h
+index f93238e2..f2d3b3d6 100644
+--- a/src/target/target_internal.h
++++ b/src/target/target_internal.h
+@@ -28,7 +28,7 @@
+ #include "target_probe.h"
+ 
+ #define TOPT_INHIBIT_NRST           (1U << 0U)  /* Target misbehaves if reset using nRST line */
+-#define TOPT_NON_HALTING_MEM_IO     (1U << 30U) /* Target does not need halting for memory I/O */
++#define TOPT_HALTING_MEM_IO         (1U << 30U) /* Target needs halting for memory I/O */
+ #define TOPT_IN_SEMIHOSTING_SYSCALL (1U << 31U) /* Target is currently in a semihosting syscall */
+ 
+ extern target_s *target_list;

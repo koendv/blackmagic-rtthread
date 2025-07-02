@@ -117,7 +117,7 @@ const command_s cmd_list[] = {
 #ifdef ENABLE_RTT
 	{"rtt", cmd_rtt,
 		"[enable|disable|status|channel [0..15 ...]|ident [STR]|cblock|ram [RAM_START RAM_END]|poll [MAXMS MINMS "
-		"MAXERR]]"},
+		"MAXERR]]|halt [enable|disable|auto]"},
 #endif
 #ifdef PLATFORM_HAS_TRACESWO
 #if SWO_ENCODING == 1
@@ -615,6 +615,22 @@ static bool cmd_rtt(target_s *target, int argc, const char **argv)
 			gdb_outf("%2" PRIu32 "   %c %s 0x%08" PRIx32 " %6" PRIu32 " %6" PRIu32 " %6" PRIu32 " %4" PRIu32 "\n", i,
 				rtt_channel_enabled[i] ? 'y' : 'n', i < rtt_num_up_chan ? "out" : "in ", rtt_channel[i].buf_addr,
 				rtt_channel[i].buf_size, rtt_channel[i].head, rtt_channel[i].tail, rtt_channel[i].flag);
+		}
+	} else if (argc == 2 && strncmp(argv[1], "halt", command_len) == 0) {
+		gdb_outf("halt: %s\n", rtt_halt_override ? (rtt_halt ? "enabled" : "disabled") : "auto");
+	} else if (argc == 3 && strncmp(argv[1], "halt", command_len) == 0) {
+		const size_t value_len = strlen(argv[2]);
+		if (value_len && !strncmp(argv[2], "enable", value_len)) {
+			rtt_halt_override = true;
+			rtt_halt = true;
+		} else if (value_len && !strncmp(argv[2], "disable", value_len)) {
+			rtt_halt_override = true;
+			rtt_halt = false;
+		} else if (value_len && !strncmp(argv[2], "auto", value_len)) {
+			rtt_halt_override = false;
+			rtt_halt = false;
+		} else {
+			gdb_out("what?\n");
 		}
 	} else if (argc == 3 && strncmp(argv[1], "ident", command_len) == 0) {
 		strncpy(rtt_ident, argv[2], sizeof(rtt_ident));

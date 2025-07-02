@@ -155,6 +155,7 @@ bool tm4c_probe(target_s *const target, const uint16_t did1)
 		 * only use the AIRCR SYSRESETREQ.
 		 */
 		target->target_options |= TOPT_INHIBIT_NRST;
+		target->target_options |= TOPT_HALTING_MEM_IO;
 		break;
 	case DID1_TM4C1230C3PM:
 		target_add_ram32(target, 0x20000000, 0x6000);
