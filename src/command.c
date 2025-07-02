@@ -48,7 +48,6 @@
 #ifdef PLATFORM_HAS_TRACESWO
 #include "serialno.h"
 #include "swo.h"
-#include "usb.h"
 #endif
 
 static bool cmd_version(target_s *target, int argc, const char **argv);
@@ -714,8 +713,6 @@ static bool cmd_swo_enable(int argc, const char **argv)
 		gdb_outf("%c", bit);
 	}
 	gdb_outf("\n");
-	/* Then the connection information for programs that are scraping BMD's output to know what to connect to */
-	gdb_outf("Trace enabled for BMP serial %s, USB EP %u\n", serial_no, SWO_ENDPOINT);
 	return true;
 }
 

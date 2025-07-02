@@ -24,7 +24,7 @@
 #error "Include 'general.h' instead"
 #endif
 
-#if CONFIG_BMDA == 0
+#ifdef INTEGER_ONLY_PRINTF
 #include "stdio_newlib.h"
 #endif
 #include "target.h"
