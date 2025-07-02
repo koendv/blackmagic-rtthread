@@ -1,6 +1,13 @@
+commit ad5fe53f7c8dcb2f67721e812a0857459c047ab9
+Author: Koen De Vleeschauwer <kdv@kdvelectronics.eu>
+Date:   Wed Jul 2 12:11:34 2025 +0200
+
+    memwatch
+
 diff --git a/src/include/memwatch.h b/src/include/memwatch.h
-index e69de29b..6140c0e5 100644
---- a/src/include/memwatch.h
+new file mode 100644
+index 00000000..6140c0e5
+--- /dev/null
 +++ b/src/include/memwatch.h
 @@ -0,0 +1,32 @@
 +#ifndef MEMWATCH_H
@@ -36,8 +43,9 @@ index e69de29b..6140c0e5 100644
 +
 +#endif
 diff --git a/src/memwatch.c b/src/memwatch.c
-index e69de29b..0c9412c3 100644
---- a/src/memwatch.c
+new file mode 100644
+index 00000000..0c9412c3
+--- /dev/null
 +++ b/src/memwatch.c
 @@ -0,0 +1,54 @@
 +#include "general.h"
@@ -95,21 +103,22 @@ index e69de29b..0c9412c3 100644
 +	return;
 +}
 diff --git a/src/target/cortexm.c b/src/target/cortexm.c
-index c2a20e2c..2bb71762 100644
+index a6445de5..3511e8e5 100644
 --- a/src/target/cortexm.c
 +++ b/src/target/cortexm.c
-@@ -42,15 +42,25 @@
- #include "command.h"
- #include "gdb_packet.h"
- #include "semihosting.h"
+@@ -45,15 +45,26 @@
+ #include "platform.h"
+ #include "maths_utils.h"
+ 
 +#ifdef ENABLE_MEMWATCH
 +#include "memwatch.h"
 +#include <ctype.h>
 +#endif
- #include "platform.h"
- #include "maths_utils.h"
- 
++
  #include <assert.h>
+ 
+ /* This is the size (in 32 bits integers) you must allocate when reading cortem registers */
+ #define CORTEXM_MAX_REG_COUNT (CORTEXM_GENERAL_REG_COUNT + CORTEX_FLOAT_REG_COUNT + CORTEXM_TRUSTZONE_REG_COUNT)
  
  static bool cortexm_vector_catch(target_s *target, int argc, const char **argv);
 +#ifdef ENABLE_MEMWATCH
@@ -124,7 +133,7 @@ index c2a20e2c..2bb71762 100644
  	{NULL, NULL, NULL},
  };
  
-@@ -1269,6 +1279,81 @@ static bool cortexm_vector_catch(target_s *target, int argc, const char **argv)
+@@ -1272,6 +1283,81 @@ static bool cortexm_vector_catch(target_s *target, int argc, const char **argv)
  	return true;
  }
  

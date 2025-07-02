@@ -1,5 +1,11 @@
+commit 37fe652695eac31796c64862852b609632d0c8d3
+Author: Koen De Vleeschauwer <kdv@kdvelectronics.eu>
+Date:   Wed Jul 2 12:03:47 2025 +0200
+
+    port-rtthread
+
 diff --git a/src/command.c b/src/command.c
-index 52a60c6c..a0c734de 100644
+index c30043b1..c493515d 100644
 --- a/src/command.c
 +++ b/src/command.c
 @@ -48,7 +48,6 @@
@@ -10,7 +16,7 @@ index 52a60c6c..a0c734de 100644
  #endif
  
  static bool cmd_version(target_s *target, int argc, const char **argv);
-@@ -699,8 +698,6 @@ static bool cmd_swo_enable(int argc, const char **argv)
+@@ -714,8 +713,6 @@ static bool cmd_swo_enable(int argc, const char **argv)
  		gdb_outf("%c", bit);
  	}
  	gdb_outf("\n");
@@ -59,7 +65,7 @@ index 3c1c009a..1e51b885 100644
  #endif
  #include "target.h"
 diff --git a/src/platforms/common/stm32/swo_itm_decode.c b/src/platforms/common/stm32/swo_itm_decode.c
-index 7e79ff10..31c2a77b 100644
+index 7e79ff10..913f88f6 100644
 --- a/src/platforms/common/stm32/swo_itm_decode.c
 +++ b/src/platforms/common/stm32/swo_itm_decode.c
 @@ -21,11 +21,21 @@
