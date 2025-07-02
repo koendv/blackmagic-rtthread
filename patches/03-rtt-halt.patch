@@ -1,14 +1,8 @@
-commit e371c3a72167cb46af6114c387c2b914326fe07c
-Author: Koen De Vleeschauwer <kdv@kdvelectronics.eu>
-Date:   Wed Jul 2 13:13:45 2025 +0200
-
-    rtt halt
-
 diff --git a/src/command.c b/src/command.c
-index c493515d..4096cc2a 100644
+index c30043b1..f5e1c5ee 100644
 --- a/src/command.c
 +++ b/src/command.c
-@@ -117,7 +117,7 @@ const command_s cmd_list[] = {
+@@ -118,7 +118,7 @@ const command_s cmd_list[] = {
  #ifdef ENABLE_RTT
  	{"rtt", cmd_rtt,
  		"[enable|disable|status|channel [0..15 ...]|ident [STR]|cblock|ram [RAM_START RAM_END]|poll [MAXMS MINMS "
@@ -17,12 +11,27 @@ index c493515d..4096cc2a 100644
  #endif
  #ifdef PLATFORM_HAS_TRACESWO
  #if SWO_ENCODING == 1
-@@ -616,6 +616,23 @@ static bool cmd_rtt(target_s *target, int argc, const char **argv)
+@@ -564,6 +564,7 @@ static const char *on_or_off(const bool value)
+ 
+ static bool cmd_rtt(target_s *target, int argc, const char **argv)
+ {
++	(void)target;
+ 	const size_t command_len = argc > 1 ? strlen(argv[1]) : 0;
+ 	if (argc == 1 || (argc == 2 && strncmp(argv[1], "enabled", command_len) == 0)) {
+ 		rtt_enabled = true;
+@@ -578,7 +579,7 @@ static bool cmd_rtt(target_s *target, int argc, const char **argv)
+ 			gdb_out("off");
+ 		else
+ 			gdb_outf("\"%s\"", rtt_ident);
+-		gdb_outf(" halt: %s", on_or_off(target_mem_access_needs_halt(target)));
++		gdb_outf(" halt: %s", on_or_off(rtt_halt));
+ 		gdb_out(" channels: ");
+ 		if (rtt_auto_channel)
+ 			gdb_out("auto ");
+@@ -617,6 +618,20 @@ static bool cmd_rtt(target_s *target, int argc, const char **argv)
  				rtt_channel_enabled[i] ? 'y' : 'n', i < rtt_num_up_chan ? "out" : "in ", rtt_channel[i].buf_addr,
  				rtt_channel[i].buf_size, rtt_channel[i].head, rtt_channel[i].tail, rtt_channel[i].flag);
  		}
-+	} else if (argc == 2 && strncmp(argv[1], "halt", command_len) == 0) {
-+		gdb_outf("halt: %s\n", rtt_halt_override ? (rtt_halt ? "enabled" : "disabled") : "auto");
 +	} else if (argc == 3 && strncmp(argv[1], "halt", command_len) == 0) {
 +		const size_t value_len = strlen(argv[2]);
 +		if (value_len && !strncmp(argv[2], "enable", value_len)) {
@@ -37,7 +46,6 @@ index c493515d..4096cc2a 100644
 +		} else {
 +			gdb_out("what?\n");
 +		}
-+		return true;
  	} else if (argc == 3 && strncmp(argv[1], "ident", command_len) == 0) {
  		strncpy(rtt_ident, argv[2], sizeof(rtt_ident));
  		rtt_ident[sizeof(rtt_ident) - 1U] = '\0';

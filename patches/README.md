@@ -10,12 +10,12 @@ software watchpoints. adds "mon memwatch" gdb command. See docs/UsingMemwatch.md
 
 - **03-rtt-halt.patch**
 adds "mon rtt halt [enable|disable|auto]" gdb command.
-allows user to force halting/not halting target processor within rtt. 
+allows user to force rtt to halt or not to halt target processor. 
 
 code:
 ```
 cd packages/blackmagic-latest
-patch -p1 < 01-port-rtthread.patch
-patch -p1 < 02-memwatch.patch
-patch -p1 < 03-rtt-halt.patch
+patch -p1 < patches/01-port-rtthread.patch
+patch -p1 < patches/02-memwatch.patch
+patch -p1 < patches/03-rtt-halt.patch
 ```

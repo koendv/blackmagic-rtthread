@@ -563,6 +563,7 @@ static const char *on_or_off(const bool value)
 
 static bool cmd_rtt(target_s *target, int argc, const char **argv)
 {
+	(void)target;
 	const size_t command_len = argc > 1 ? strlen(argv[1]) : 0;
 	if (argc == 1 || (argc == 2 && strncmp(argv[1], "enabled", command_len) == 0)) {
 		rtt_enabled = true;
@@ -577,7 +578,7 @@ static bool cmd_rtt(target_s *target, int argc, const char **argv)
 			gdb_out("off");
 		else
 			gdb_outf("\"%s\"", rtt_ident);
-		gdb_outf(" halt: %s", on_or_off(target_mem_access_needs_halt(target)));
+		gdb_outf(" halt: %s", on_or_off(rtt_halt));
 		gdb_out(" channels: ");
 		if (rtt_auto_channel)
 			gdb_out("auto ");
@@ -616,8 +617,6 @@ static bool cmd_rtt(target_s *target, int argc, const char **argv)
 				rtt_channel_enabled[i] ? 'y' : 'n', i < rtt_num_up_chan ? "out" : "in ", rtt_channel[i].buf_addr,
 				rtt_channel[i].buf_size, rtt_channel[i].head, rtt_channel[i].tail, rtt_channel[i].flag);
 		}
-	} else if (argc == 2 && strncmp(argv[1], "halt", command_len) == 0) {
-		gdb_outf("halt: %s\n", rtt_halt_override ? (rtt_halt ? "enabled" : "disabled") : "auto");
 	} else if (argc == 3 && strncmp(argv[1], "halt", command_len) == 0) {
 		const size_t value_len = strlen(argv[2]);
 		if (value_len && !strncmp(argv[2], "enable", value_len)) {
