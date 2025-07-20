@@ -1,6 +1,6 @@
 ## Licensing Overview
 
-This project is in the public domain.
+This project is distributed under the MIT license.
 
 ### Included Third-Party Code
 
