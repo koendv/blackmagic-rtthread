@@ -60,6 +60,9 @@ static void swdptap_seq_out_parity(uint32_t tms_states, size_t clock_cycles) __a
 
 void swdptap_init(void)
 {
+#ifdef SWDPTAP_PLATFORM_INIT
+        swdptap_platform_init();
+#endif
 	swd_proc.seq_in = swdptap_seq_in;
 	swd_proc.seq_in_parity = swdptap_seq_in_parity;
 	swd_proc.seq_out = swdptap_seq_out;
