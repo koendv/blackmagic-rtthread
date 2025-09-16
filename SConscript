@@ -37,10 +37,13 @@ cwd = GetCurrentDir()
 
 src = Glob(join('src', '*.c'), exclude=[join('src', 'main.c'), join('src', 'rtt.c'), join('src', 'morse.c')])
 src += Glob(join('src', 'target', '*.c'), exclude=[join('src', 'target', 'swdptap_generic.c'), join('src', 'target', 'jtagtap_generic.c')])
-src += Glob(join('src', 'platforms', 'common', 'jtagtap.c'))
-src += Glob(join('src', 'platforms', 'common', 'swdptap.c'))
 src += Glob(join('src', 'platforms', 'common', 'stm32', 'swo_itm_decode.c'))
 src += Glob(join('port', '*.c'), exclude=[join('port', 'rtt_if.c')])
+
+# gpio
+if GetDepend(['BLACKMAGIC_ENABLE_GPIO']):
+    src += Glob(join('src', 'platforms', 'common', 'jtagtap.c'))
+    src += Glob(join('src', 'platforms', 'common', 'swdptap.c'))
 
 # rtt
 if GetDepend(['BLACKMAGIC_ENABLE_RTT']):
