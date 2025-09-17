@@ -35,7 +35,7 @@ char gdb_if_getchar_to(uint32_t timeout_ms)
         gdb_write_idx = 0;
         return '\x04';
     }
-    return cdc0_getchar_timeout(rt_tick_from_millisecond(timeout_ms));
+    return cdc0_getchar_timeout(timeout_ms);
 }
 
 /* write one character to gdb server port. send usb packet if "flush" */
