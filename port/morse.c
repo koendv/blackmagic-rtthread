@@ -1,6 +1,6 @@
 /*
  * legacy code.
- * the original hardware does not have a display.
+ * the original black magic probe hardware does not have a display.
  * instead, error messages are displayed by blinking a led in morse code.
  * this code added for compatibility with the original hardware.
  */

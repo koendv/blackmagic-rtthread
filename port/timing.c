@@ -1,7 +1,7 @@
 #include "general.h"
 #include "platform.h"
 
-#ifndef CUSTOM_TIMING
+#ifndef BLACKMAGIC_CUSTOM_TIMING
 
 uint32_t target_clk_divider = 1;
 

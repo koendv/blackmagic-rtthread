@@ -7,7 +7,7 @@
 #include "general.h"
 #include "platform.h"
 
-#ifndef CUSTOM_GDB_TASK
+#ifndef BLACKMAGIC_CUSTOM_GDB_TASK
 
 #include "gdb_if.h"
 #include "gdb_main.h"
