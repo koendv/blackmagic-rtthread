@@ -48,7 +48,6 @@ if GetDepend(['BLACKMAGIC_ENABLE_GPIO']):
 # rtt
 if GetDepend(['BLACKMAGIC_ENABLE_RTT']):
     src += [join('src', 'rtt.c')]
-    src += [join('port', 'rtt_if.c')]
     LOCAL_CPPDEFINES += ['ENABLE_RTT=1']
 
 if GetDepend(['BLACKMAGIC_ENABLE_RTT_IDENT']):
