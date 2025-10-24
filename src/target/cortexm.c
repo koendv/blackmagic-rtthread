@@ -1290,6 +1290,37 @@ static bool cortexm_memwatch(target_s *target, int argc, const char **argv)
 	char name[MEMWATCH_STRLEN] = {0};
 	int precision = 0;
 	char ch;
+
+	if (argc == 2 && strncmp(argv[1], "status", strlen(argv[1])) == 0) {
+		union val32_u {
+			uint32_t i;
+			volatile float f;
+		} val;
+
+		gdb_outf("address    variable    fmt value\r\n");
+		for (int32_t i = 0; i < memwatch_cnt; i++) {
+			val.i = memwatch_table[i].value;
+			gdb_outf("0x%08" PRIx32 " %-12s ", memwatch_table[i].addr, memwatch_table[i].name);
+			switch (memwatch_table[i].format) {
+			case MEMWATCH_FMT_SIGNED:
+				gdb_outf("s  %" PRId32 "\r\n", val.i);
+				break;
+			case MEMWATCH_FMT_UNSIGNED:
+				gdb_outf("u  %" PRIu32 "\r\n", val.i);
+				break;
+			case MEMWATCH_FMT_FLOAT:
+				gdb_outf("f%d %.*g\r\n",  memwatch_table[i].precision, memwatch_table[i].precision, val.f);
+				break;
+			case MEMWATCH_FMT_HEX:
+				gdb_outf( "x  %" PRIx32 "\r\n", val.i);
+				break;
+			default:
+				gdb_outf( "?\r\n");
+			}
+		}
+		return true;
+	}
+
 	memset(memwatch_table, 0, sizeof(memwatch_table));
 	memwatch_cnt = 0;
 	memwatch_timestamp = false;
@@ -1339,7 +1370,7 @@ static bool cortexm_memwatch(target_s *target, int argc, const char **argv)
 				name[MEMWATCH_STRLEN - 1] = '\0';
 			}
 			memwatch_table[memwatch_cnt].addr = addr;
-			memwatch_table[memwatch_cnt].value = 0xdeadbeef;
+			memwatch_table[memwatch_cnt].value = 0;
 			memwatch_table[memwatch_cnt].format = fmt;
 			memwatch_table[memwatch_cnt].precision = precision;
 			memcpy(memwatch_table[memwatch_cnt].name, name, MEMWATCH_STRLEN);

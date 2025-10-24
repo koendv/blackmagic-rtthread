@@ -1,9 +1,3 @@
-commit ad5fe53f7c8dcb2f67721e812a0857459c047ab9
-Author: Koen De Vleeschauwer <kdv@kdvelectronics.eu>
-Date:   Wed Jul 2 12:11:34 2025 +0200
-
-    memwatch
-
 diff --git a/src/include/memwatch.h b/src/include/memwatch.h
 new file mode 100644
 index 00000000..6140c0e5
@@ -103,7 +97,7 @@ index 00000000..0c9412c3
 +	return;
 +}
 diff --git a/src/target/cortexm.c b/src/target/cortexm.c
-index a6445de5..3511e8e5 100644
+index 71b571b4..749a1952 100644
 --- a/src/target/cortexm.c
 +++ b/src/target/cortexm.c
 @@ -45,15 +45,26 @@
@@ -133,7 +127,7 @@ index a6445de5..3511e8e5 100644
  	{NULL, NULL, NULL},
  };
  
-@@ -1272,6 +1283,81 @@ static bool cortexm_vector_catch(target_s *target, int argc, const char **argv)
+@@ -1273,6 +1284,112 @@ static bool cortexm_vector_catch(target_s *target, int argc, const char **argv)
  	return true;
  }
  
@@ -144,6 +138,37 @@ index a6445de5..3511e8e5 100644
 +	char name[MEMWATCH_STRLEN] = {0};
 +	int precision = 0;
 +	char ch;
++
++	if (argc == 2 && strncmp(argv[1], "status", strlen(argv[1])) == 0) {
++		union val32_u {
++			uint32_t i;
++			volatile float f;
++		} val;
++
++		gdb_outf("address    variable    fmt value\r\n");
++		for (int32_t i = 0; i < memwatch_cnt; i++) {
++			val.i = memwatch_table[i].value;
++			gdb_outf("0x%08" PRIx32 " %-12s ", memwatch_table[i].addr, memwatch_table[i].name);
++			switch (memwatch_table[i].format) {
++			case MEMWATCH_FMT_SIGNED:
++				gdb_outf("s  %" PRId32 "\r\n", val.i);
++				break;
++			case MEMWATCH_FMT_UNSIGNED:
++				gdb_outf("u  %" PRIu32 "\r\n", val.i);
++				break;
++			case MEMWATCH_FMT_FLOAT:
++				gdb_outf("f%d %.*g\r\n",  memwatch_table[i].precision, memwatch_table[i].precision, val.f);
++				break;
++			case MEMWATCH_FMT_HEX:
++				gdb_outf( "x  %" PRIx32 "\r\n", val.i);
++				break;
++			default:
++				gdb_outf( "?\r\n");
++			}
++		}
++		return true;
++	}
++
 +	memset(memwatch_table, 0, sizeof(memwatch_table));
 +	memwatch_cnt = 0;
 +	memwatch_timestamp = false;
@@ -193,7 +218,7 @@ index a6445de5..3511e8e5 100644
 +				name[MEMWATCH_STRLEN - 1] = '\0';
 +			}
 +			memwatch_table[memwatch_cnt].addr = addr;
-+			memwatch_table[memwatch_cnt].value = 0xdeadbeef;
++			memwatch_table[memwatch_cnt].value = 0;
 +			memwatch_table[memwatch_cnt].format = fmt;
 +			memwatch_table[memwatch_cnt].precision = precision;
 +			memcpy(memwatch_table[memwatch_cnt].name, name, MEMWATCH_STRLEN);
