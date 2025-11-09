@@ -106,6 +106,7 @@ int app_gdb_server_init(void)
                                          GDB_TICK);
     if (gdb_server_thread != RT_NULL)
         rt_thread_startup(gdb_server_thread);
+    return 0;
 }
 
 #ifndef NO_INIT_GDB_SERVER
