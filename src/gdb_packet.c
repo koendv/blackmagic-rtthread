@@ -27,6 +27,7 @@
 #include "platform.h"
 #include "gdb_if.h"
 #include "gdb_packet.h"
+#include "gdb_main.h"
 #include "hex_utils.h"
 #include "remote.h"
 
@@ -38,8 +39,18 @@ typedef enum packet_state {
 	PACKET_GDB_ESCAPE,
 	PACKET_GDB_CHECKSUM_UPPER,
 	PACKET_GDB_CHECKSUM_LOWER,
+	PACKET_REMOTE_CAPTURE,
 } packet_state_e;
 
+typedef struct {
+	packet_state_e state;
+	gdb_packet_s *packet;
+	uint8_t rx_checksum;
+	size_t idx;
+	bool notification;
+} gdb_rx_state_t;
+
+static gdb_rx_state_t gdb_rx = {0};
 static bool noackmode = false;
 
 #ifdef EXTERNAL_PACKET_BUFFER
@@ -175,6 +186,175 @@ packet_state_e consume_remote_packet(char *const packet, const size_t size)
 #endif
 }
 
+/**
+ * Process incoming GDB/remote characters in a non-blocking, stateful manner.
+ * Reads characters one at a time from the GDB interface until none are available.
+ * When a complete packet is detected, it is processed via gdb_main().
+ * State is preserved between calls, allowing partial packets to be built incrementally.
+ */
+void gdb_packet_process(void)
+{
+	char c;
+
+	/* Read characters one at a time until none available */
+	while (gdb_if_getchar_nonblock(&c)) {
+		/* Get packet buffer on first use (or after reset) */
+		if (gdb_rx.packet == NULL) {
+			gdb_rx.packet = gdb_full_packet_buffer();
+			/* Ensure clean buffer regardless of allocation strategy */
+			memset(gdb_rx.packet, 0, sizeof(gdb_packet_s));
+			gdb_rx.packet->size = 0;
+		}
+
+		switch (gdb_rx.state) {
+		case PACKET_IDLE:
+			if (c == GDB_PACKET_START) {
+				/* Start of GDB packet */
+				gdb_rx.state = PACKET_GDB_CAPTURE;
+				gdb_rx.idx = 0;
+				gdb_rx.notification = false;
+			} else if (c == GDB_PACKET_NOTIFICATION_START) {
+				/* Start of notification packet */
+				gdb_rx.state = PACKET_GDB_CAPTURE;
+				gdb_rx.idx = 0;
+				gdb_rx.notification = true;
+			} else if (c == REMOTE_SOM) {
+				/* Start of BMP remote packet */
+				gdb_rx.state = PACKET_REMOTE_CAPTURE;
+				gdb_rx.idx = 0;
+				gdb_rx.packet->data[gdb_rx.idx++] = c;
+			} else if (c == '\x04') {
+				/* EOT - connection closed */
+				gdb_rx.packet->data[0] = c;
+				gdb_rx.packet->data[1] = '\0';
+				gdb_rx.packet->size = 1;
+				gdb_rx.packet->notification = false;
+				gdb_main(gdb_rx.packet);
+			}
+			/* Otherwise ignore characters */
+			break;
+
+		case PACKET_GDB_CAPTURE:
+			if (c == GDB_PACKET_START) {
+				/* Restart capture - new packet begins */
+				gdb_rx.idx = 0;
+				break;
+			}
+			if (c == GDB_PACKET_END) {
+				/* End of packet data, now expect checksum */
+				gdb_rx.state = PACKET_GDB_CHECKSUM_UPPER;
+				break;
+			}
+
+			if (c == GDB_PACKET_ESCAPE) {
+				gdb_rx.state = PACKET_GDB_ESCAPE;
+			} else {
+				if (gdb_rx.idx < GDB_PACKET_BUFFER_SIZE) {
+					gdb_rx.packet->data[gdb_rx.idx++] = c;
+				} else {
+					/* Buffer overflow - reset */
+					gdb_rx.state = PACKET_IDLE;
+				}
+			}
+			break;
+
+		case PACKET_GDB_ESCAPE:
+			if (gdb_rx.idx < GDB_PACKET_BUFFER_SIZE) {
+				gdb_rx.packet->data[gdb_rx.idx++] = c ^ GDB_PACKET_ESCAPE_XOR;
+			}
+			gdb_rx.state = PACKET_GDB_CAPTURE;
+			break;
+
+		case PACKET_GDB_CHECKSUM_UPPER:
+			if (!noackmode) {
+				gdb_rx.rx_checksum = unhex_digit(c) << 4;
+			}
+			gdb_rx.state = PACKET_GDB_CHECKSUM_LOWER;
+			break;
+
+		case PACKET_GDB_CHECKSUM_LOWER:
+			if (!noackmode) {
+				gdb_rx.rx_checksum |= unhex_digit(c);
+
+				/* Calculate packet checksum */
+				uint8_t calc_checksum = 0;
+				for (size_t i = 0; i < gdb_rx.idx; i++) {
+					char ch = gdb_rx.packet->data[i];
+					if (gdb_packet_is_reserved(ch))
+						calc_checksum += GDB_PACKET_ESCAPE + (ch ^ GDB_PACKET_ESCAPE_XOR);
+					else
+						calc_checksum += ch;
+				}
+
+				bool checksum_ok = (calc_checksum == gdb_rx.rx_checksum);
+				gdb_packet_ack(checksum_ok);
+
+				if (!checksum_ok) {
+					/* Bad checksum - discard packet */
+					gdb_rx.state = PACKET_IDLE;
+					break;
+				}
+			}
+
+			/* Packet complete and valid - process it */
+			gdb_rx.packet->data[gdb_rx.idx] = '\0';
+			gdb_rx.packet->size = gdb_rx.idx;
+			gdb_rx.packet->notification = gdb_rx.notification;
+
+#ifndef DEBUG_GDB_IS_NOOP
+			gdb_packet_debug(__func__, gdb_rx.packet);
+#endif
+			gdb_main(gdb_rx.packet);
+
+			/* Reset for next packet, keep same buffer */
+			gdb_rx.state = PACKET_IDLE;
+			gdb_rx.idx = 0;
+			gdb_rx.notification = false;
+			break;
+
+		case PACKET_REMOTE_CAPTURE:
+			if (c == REMOTE_EOM) {
+				/* Complete remote packet */
+				gdb_rx.packet->data[gdb_rx.idx] = '\0';
+				remote_packet_process(gdb_rx.packet->data, gdb_rx.idx);
+				gdb_rx.state = PACKET_IDLE;
+				gdb_rx.idx = 0;
+			} else if (c == GDB_PACKET_START) {
+				/* Switch to GDB packet mode */
+				gdb_rx.state = PACKET_GDB_CAPTURE;
+				gdb_rx.idx = 0;
+				gdb_rx.packet->data[gdb_rx.idx++] = c;
+				gdb_rx.notification = false;
+			} else if (gdb_rx.idx < GDB_PACKET_BUFFER_SIZE) {
+				gdb_rx.packet->data[gdb_rx.idx++] = c;
+			} else {
+				/* Buffer overflow */
+				gdb_rx.state = PACKET_IDLE;
+				gdb_rx.idx = 0;
+			}
+			break;
+
+		default:
+			gdb_rx.state = PACKET_IDLE;
+			break;
+		}
+	}
+}
+
+/**
+ * Reset the GDB packet state machine.
+ * Called when DTR changes to ensure clean state for new connection.
+ */
+void gdb_packet_reset(void)
+{
+	gdb_rx.state = PACKET_IDLE;
+	gdb_rx.idx = 0;
+	gdb_rx.rx_checksum = 0;
+	gdb_rx.notification = false;
+	gdb_rx.packet = NULL; /* Force re-acquisition and memset on next use */
+}
+
+/* Legacy blocking receive function - kept for compatibility */
 gdb_packet_s *gdb_packet_receive(void)
 {
 	packet_state_e state = PACKET_IDLE; /* State of the packet capture */

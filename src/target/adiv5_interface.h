@@ -26,6 +26,7 @@
 
 #include "adiv5_internal.h"
 #include "exception.h"
+#include "rtthread.h"
 
 #ifndef DEBUG_PROTO_IS_NOOP
 void decode_access(uint16_t addr, uint8_t rnw, uint8_t apsel, uint32_t value);
@@ -72,7 +73,9 @@ static inline void adiv5_dp_write(adiv5_debug_port_s *const dp, const uint16_t a
 static inline uint32_t adiv5_dp_low_access(
 	adiv5_debug_port_s *const dp, const uint8_t rnw, const uint16_t addr, const uint32_t value)
 {
+        rt_base_t irq_level = rt_hw_interrupt_disable();
 	uint32_t ret = dp->low_access(dp, rnw, addr, value);
+        rt_hw_interrupt_enable(irq_level);
 #ifndef DEBUG_PROTO_IS_NOOP
 	decode_access(addr, rnw, 0U, value);
 	DEBUG_PROTO("0x%08" PRIx32 "\n", rnw ? ret : value);
