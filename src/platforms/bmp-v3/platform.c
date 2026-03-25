@@ -384,6 +384,7 @@ bool platform_spi_init(const spi_bus_e bus)
 		gpio_mode_setup(EXT_SPI_POCI_PORT, GPIO_MODE_AF, GPIO_PUPD_NONE, EXT_SPI_POCI_PIN);
 		gpio_set_af(EXT_SPI_PICO_PORT, GPIO_AF5, EXT_SPI_PICO_PIN);
 		gpio_mode_setup(EXT_SPI_PICO_PORT, GPIO_MODE_AF, GPIO_PUPD_NONE, EXT_SPI_PICO_PIN);
+		gpio_set(EXT_SPI_CS_PORT, EXT_SPI_CS_PIN);
 		gpio_set(TCK_DIR_PORT, TCK_DIR_PIN);
 		gpio_set(TMS_DIR_PORT, TMS_DIR_PIN);
 	} else
@@ -406,9 +407,12 @@ bool platform_spi_deinit(spi_bus_e bus)
 
 	if (bus == SPI_BUS_EXTERNAL) {
 		rcc_periph_clock_disable(RCC_SPI2);
-		gpio_mode_setup(TCK_PORT, GPIO_MODE_OUTPUT, GPIO_PUPD_NONE, TCK_PIN);
+		gpio_mode_setup(TCK_PORT, GPIO_MODE_INPUT, GPIO_PUPD_NONE, TCK_PIN);
+		gpio_mode_setup(TMS_PORT, GPIO_MODE_OUTPUT, GPIO_PUPD_NONE, TMS_PIN);
 		gpio_mode_setup(TDI_PORT, GPIO_MODE_OUTPUT, GPIO_PUPD_NONE, TDI_PIN);
-		platform_target_clk_output_enable(false);
+		gpio_mode_setup(TDO_PORT, GPIO_MODE_INPUT, GPIO_PUPD_NONE, TDO_PIN);
+		gpio_clear(TCK_DIR_PORT, TCK_DIR_PIN);
+		gpio_set(TMS_DIR_PORT, TMS_DIR_PIN);
 	}
 	return true;
 }
