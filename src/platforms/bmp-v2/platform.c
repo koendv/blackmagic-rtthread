@@ -458,9 +458,9 @@ bool platform_spi_init(const spi_bus_e bus)
 	if (bus == SPI_BUS_EXTERNAL) {
 		rcc_periph_clock_enable(RCC_SPI1);
 		rcc_periph_reset_pulse(RST_SPI1);
-		platform_target_clk_output_enable(true);
 		gpio_set_mode(TCK_PORT, GPIO_MODE_OUTPUT_50_MHZ, GPIO_CNF_OUTPUT_ALTFN_PUSHPULL, TCK_PIN);
 		gpio_set_mode(TDI_PORT, GPIO_MODE_OUTPUT_50_MHZ, GPIO_CNF_OUTPUT_ALTFN_PUSHPULL, TDI_PIN);
+		gpio_set(TCK_DIR_PORT, TCK_DIR_PIN);
 		gpio_set(TMS_DIR_PORT, TMS_DIR_PIN);
 	} else {
 		rcc_periph_clock_enable(RCC_SPI2);
