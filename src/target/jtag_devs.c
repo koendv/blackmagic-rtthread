@@ -436,6 +436,18 @@ const jtag_dev_descr_s dev_descr[] = {
 #endif
 #ifdef CONFIG_LATTICE
 	{
+		.idcode = 0x00190043U,
+		.idmask = 0x0fffefffU,
+#if ENABLE_DEBUG == 1
+		.descr = "ispCLOCK",
+#endif
+		.ir_quirks =
+			{
+				.ir_length = 8U,
+				.ir_value = 0x1dU,
+			},
+	},
+	{
 		.idcode = 0x21111043U,
 		.idmask = 0xffffffffU,
 #if ENABLE_DEBUG == 1
