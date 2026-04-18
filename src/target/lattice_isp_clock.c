@@ -34,6 +34,7 @@
 #include "general.h"
 #include "jtag_scan.h"
 #include "jtagtap.h"
+#include "buffer_utils.h"
 #include "target.h"
 #include "target_internal.h"
 #include "lattice_isp_clock.h"
@@ -64,7 +65,7 @@ typedef struct isp_clock {
 
 static bool isp_clock_enter_flash_mode(target_s *target);
 static bool isp_clock_exit_flash_mode(target_s *target);
-static bool isp_clock_flash_write(target_flash_s *flash, target_addr_t dest, const void *buffer, size_t lenth);
+static bool isp_clock_flash_write(target_flash_s *flash, target_addr_t dest, const void *buffer, size_t length);
 static bool isp_clock_flash_mass_erase(target_flash_s *flash, platform_timeout_s *print_progress);
 
 static void isp_clock_add_flash(target_s *const target)
@@ -125,8 +126,50 @@ bool isp_clock_exit_flash_mode(target_s *const target)
 	return true;
 }
 
-static bool isp_clock_flash_write(target_flash_s *flash, target_addr_t dest, const void *buffer, size_t length)
+static bool isp_clock_flash_write(
+	target_flash_s *const flash, const target_addr_t dest, const void *const buffer, const size_t length)
 {
+	const target_s *const target = flash->t;
+	const isp_clock_s *const priv = (isp_clock_s *)target->priv;
+	const uint8_t dev_index = priv->dev_index;
+
+	/* Set up the address to which we want to program data */
+	uint8_t address[2] = {0};
+	write_le2(address, 0U, dest);
+	jtag_dev_write_ir(dev_index, IR_ADDRESS_SHIFT);
+	jtag_dev_shift_dr(dev_index, NULL, address, 10U);
+
+	/* Byte access pointer to the source data buffer */
+	const uint8_t *const src = (const uint8_t *)buffer;
+	/* Loop through the data to write 42 bits at a time */
+	for (size_t bit_offset = 0U; bit_offset < length * 8U; bit_offset += 42U) {
+		/* Buffer for the 5.25 bytes of data needed per program instruction */
+		uint8_t data[6] = {0};
+
+		/* Copy out the next 42 bits of data into the buffer */
+		for (size_t buffer_offset = 0U; buffer_offset < 42U; ++buffer_offset) {
+			/* Convert the position into a bit and byte index from the source data buffer */
+			const size_t offset = bit_offset + buffer_offset;
+			const size_t src_bit = offset & 7U;
+			const size_t src_byte = offset >> 3U;
+			/* Extract the value */
+			const bool value = ((src[src_byte] >> src_bit) & 1U) != 0U;
+			/* Convert the position into a bit and byte index into the intermediary buffer */
+			const size_t data_bit = buffer_offset & 7U;
+			const size_t data_byte = buffer_offset >> 3U;
+			data[data_byte] |= (uint8_t)value << data_bit;
+		}
+
+		/* Now we have the 42 bits to program set up in the buffer, load them into the data register */
+		jtag_dev_write_ir(dev_index, IR_DATA_SHIFT);
+		jtag_dev_shift_dr(dev_index, NULL, data, 42U);
+
+		/* Finally issue the programming instruction and pick the next block */
+		jtag_dev_write_ir(dev_index, IR_PROGRAM_INCR);
+	}
+
+	/* Now we're all good and done, discharge programming voltage again */
+	jtag_dev_write_ir(dev_index, IR_DISCHARGE);
 	return true;
 }
 
@@ -142,6 +185,5 @@ static bool isp_clock_flash_mass_erase(target_flash_s *flash, platform_timeout_s
 
 	/* Then ask it to discharge the supply used for this now it's done */
 	jtag_dev_write_ir(dev_index, IR_DISCHARGE);
-
 	return true;
 }
