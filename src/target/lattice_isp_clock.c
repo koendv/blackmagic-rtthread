@@ -58,6 +58,10 @@
 #define ISP_CLOCK_NVM_BASE 0x00000000U
 #define ISP_CLOCK_NVM_SIZE 0x00001500U
 
+typedef struct isp_clock {
+	uint8_t dev_index;
+} isp_clock_s;
+
 static bool isp_clock_enter_flash_mode(target_s *target);
 static bool isp_clock_exit_flash_mode(target_s *target);
 static bool isp_clock_flash_write(target_flash_s *flash, target_addr_t dest, const void *buffer, size_t lenth);
@@ -92,6 +96,15 @@ void lattice_isp_clock_handler(const uint8_t dev_index)
 	target_s *target = target_new();
 	target->driver = "Lattice";
 	target->core = "ispCLOCK";
+
+	isp_clock_s *priv = calloc(1, sizeof(*priv));
+	if (!priv) { /* calloc failed: heap exhaustion */
+		DEBUG_ERROR("calloc: failed in %s\n", __func__);
+		return;
+	}
+	priv->dev_index = dev_index;
+	target->priv = priv;
+	target->priv_free = free;
 
 	target->enter_flash_mode = isp_clock_enter_flash_mode;
 	target->exit_flash_mode = isp_clock_exit_flash_mode;
