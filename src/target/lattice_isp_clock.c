@@ -132,5 +132,16 @@ static bool isp_clock_flash_write(target_flash_s *flash, target_addr_t dest, con
 
 static bool isp_clock_flash_mass_erase(target_flash_s *flash, platform_timeout_s *print_progress)
 {
+	(void)print_progress;
+	const target_s *const target = flash->t;
+	const isp_clock_s *const priv = (isp_clock_s *)target->priv;
+	const uint8_t dev_index = priv->dev_index;
+
+	/* Issue to the device that we want it to bulk erase */
+	jtag_dev_write_ir(dev_index, IR_BULK_ERASE);
+
+	/* Then ask it to discharge the supply used for this now it's done */
+	jtag_dev_write_ir(dev_index, IR_DISCHARGE);
+
 	return true;
 }
