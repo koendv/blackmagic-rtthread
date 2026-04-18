@@ -26,6 +26,7 @@
 #include "riscv_debug.h"
 #include "icepick.h"
 #include "lattice_ecp5.h"
+#include "lattice_isp_clock.h"
 #include "jtag_devs.h"
 
 const jtag_dev_descr_s dev_descr[] = {
@@ -441,6 +442,7 @@ const jtag_dev_descr_s dev_descr[] = {
 #if ENABLE_DEBUG == 1
 		.descr = "ispCLOCK",
 #endif
+		.handler = lattice_isp_clock_handler,
 		.ir_quirks =
 			{
 				.ir_length = 8U,

@@ -209,6 +209,7 @@ endif
 target_lattice = declare_dependency(
 	sources: files(
 		'lattice_ecp5.c',
+		'lattice_isp_clock.c',
 	),
 	compile_args: [target_lattice_defs],
 )
