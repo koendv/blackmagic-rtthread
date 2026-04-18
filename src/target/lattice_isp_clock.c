@@ -113,11 +113,15 @@ void lattice_isp_clock_handler(const uint8_t dev_index)
 
 bool isp_clock_enter_flash_mode(target_s *const target)
 {
+	const isp_clock_s *const priv = (isp_clock_s *)target->priv;
+	jtag_dev_write_ir(priv->dev_index, IR_PROGRAM_ENABLE);
 	return true;
 }
 
 bool isp_clock_exit_flash_mode(target_s *const target)
 {
+	const isp_clock_s *const priv = (isp_clock_s *)target->priv;
+	jtag_dev_write_ir(priv->dev_index, IR_PROGRAM_DISABLE);
 	return true;
 }
 
