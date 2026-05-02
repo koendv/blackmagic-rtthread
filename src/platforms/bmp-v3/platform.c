@@ -263,7 +263,7 @@ bool platform_nrst_get_val(void)
 
 bool platform_target_get_power(void)
 {
-	return !gpio_get(TPWR_EN_PORT, TPWR_EN_PIN);
+	return gpio_get(TPWR_EN_PORT, TPWR_EN_PIN);
 }
 
 static inline void platform_wait_pwm_cycle(void)
