@@ -120,11 +120,18 @@
 #define AT32F4x_PROJECT_ID 0x1ffff7f3U
 #define AT32F4x_FLASHSIZE  0x1ffff7e0U
 
+static bool at32f405_cmd_option(target_s *target, int argc, const char **argv);
 static bool at32f43_cmd_option(target_s *target, int argc, const char **argv);
 static bool at32f43_cmd_uid(target_s *target, int argc, const char **argv);
 
 const command_s at32f43_cmd_list[] = {
 	{"option", at32f43_cmd_option, "Manipulate option bytes"},
+	{"uid", at32f43_cmd_uid, "Print unique device ID"},
+	{NULL, NULL, NULL},
+};
+
+const command_s at32f405_cmd_list[] = {
+	{"option", at32f405_cmd_option, "Manipulate option bytes"},
 	{"uid", at32f43_cmd_uid, "Print unique device ID"},
 	{NULL, NULL, NULL},
 };
@@ -328,7 +335,7 @@ static bool at32f405_detect(target_s *const target, const uint32_t series)
 	target->mass_erase = at32f43_mass_erase;
 
 	/* 512 byte User System Data area at 0x1fff_f800 (different USD_BASE, no EOPB0) */
-	//target_add_commands(target, at32f43_cmd_list, target->driver);
+	target_add_commands(target, at32f405_cmd_list, target->driver);
 
 	/* Same registers and freeze bits in DBGMCU as F437 */
 	target->attach = at32f43_attach;
@@ -356,7 +363,7 @@ static bool at32f423_detect(target_s *const target, const uint32_t series)
 	target->mass_erase = at32f43_mass_erase;
 
 	/* 512 byte User System Data area at 0x1fff_f800 (different USD_BASE, no EOPB0) */
-	//target_add_commands(target, at32f43_cmd_list, target->driver);
+	target_add_commands(target, at32f405_cmd_list, target->driver);
 
 	/* Same registers and freeze bits in DBGMCU as F437 */
 	target->attach = at32f43_attach;
@@ -705,6 +712,34 @@ static bool at32f43_cmd_option(target_s *const target, const int argc, const cha
 			values[1], values[2], values[3], values[4], values[5], values[6], values[7]);
 	}
 
+	return true;
+}
+
+static bool at32f405_cmd_option(target_s *const target, const int argc, const char **const argv)
+{
+	(void)argv;
+	const uint32_t read_protected = target_mem32_read32(target, AT32F43x_FLASH_USD) & AT32F43x_FLASH_USD_RDP;
+	/* Fast-exit if the Flash is not readable */
+	if (read_protected) {
+		tc_printf(target, "Device is Read Protected\n");
+		return true;
+	}
+
+	if (argc > 1) {
+		const uint32_t idcode = target_mem32_read32(target, AT32F43x_DBGMCU_IDCODE);
+		const uint32_t series = idcode & AT32F4x_IDCODE_SERIES_MASK;
+		tc_printf(target, "Option Byte manipulation not supported for series 0x%08" PRIX32 "\n", series);
+		return false;
+	}
+
+	/* Display the current option bytes values */
+	uint16_t values[8] = {0};
+	for (size_t i = 0U; i < AT32F405_OB_COUNT * 2U; i += 16U) {
+		const uint32_t addr = AT32F405_USD_BASE + i;
+		target_mem32_read(target, values, addr, 8 * sizeof(uint16_t));
+		tc_printf(target, "0x%08" PRIX32 ": 0x%04X 0x%04X 0x%04X 0x%04X 0x%04X 0x%04X 0x%04X 0x%04X\n", addr, values[0],
+			values[1], values[2], values[3], values[4], values[5], values[6], values[7]);
+	}
 	return true;
 }
 
