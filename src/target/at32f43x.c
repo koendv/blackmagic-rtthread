@@ -30,6 +30,8 @@
  *   https://www.arterychip.com/download/RM/RM_AT32F402_405_EN_V2.01.pdf
  * AT32F423 Series Reference Manual
  *   https://www.arterychip.com/download/RM/RM_AT32F423_EN_V2.03.pdf
+ * AT32F455/456/457 Series Reference Manual
+ *   https://arterytek.com/download/RM/RM_AT32F455_456_457_V2.01_EN.pdf
  */
 
 #include "general.h"
@@ -115,6 +117,8 @@
 #define AT32F423_SERIES_256KB      0x700a3000U
 #define AT32F423_SERIES_128KB      0x700a2000U
 #define AT32F423_SERIES_64KB       0x70032000U
+#define AT32F45_SERIES_512KB       0x70063000U
+#define AT32F45_SERIES_256KB       0x70053000U
 
 #define AT32F4x_UID_BASE   0x1ffff7e8U
 #define AT32F4x_PROJECT_ID 0x1ffff7f3U
@@ -373,6 +377,41 @@ static bool at32f423_detect(target_s *const target, const uint32_t series)
 	return true;
 }
 
+/* Identify AT32F45x Mainstream devices */
+static bool at32f45_detect(target_s *const target, const uint32_t series)
+{
+	/*
+	 * AT32F455/456/457 always contain 1 bank with 2 KiB per sector
+	 * Flash (E): 512 KiB, 256 sectors, 0x7006_4000, SRAM 128 + 16 KiB
+	 * Flash (C): 256 KiB, 128 sectors, 0x7005_3000, SRAM  96 + 12 KiB
+	 */
+	const uint16_t flash_size = target_mem32_read16(target, AT32F4x_FLASHSIZE);
+	if (flash_size != 0xffffU)
+		at32f43_add_flash(target, 0x08000000U, flash_size * 1024U, 2048U, AT32F43x_FLASH_BANK1_REG_OFFSET);
+	const uint16_t ram_size = series == AT32F45_SERIES_512KB ? 128U : 96U;
+	target_add_ram32(target, 0x20000000U, ram_size * 1024U);
+
+	/*
+	 * Parity check disabled by default, controlled by USD bit 7 nRAM_PRT_CHK:
+	 * when first 64 KiB are protected by odd parity, last 16 KiB are reserved for this purpose
+	 */
+	const uint16_t ram_parity_size = ram_size / 8U;
+	target_add_ram32(target, 0x20000000U + ram_size * 1024U, ram_parity_size * 1024U);
+	target->driver = "AT32F455";
+	/* Mass erase time is just 8.2 ms (typ) */
+	target->mass_erase = at32f43_mass_erase;
+
+	/* 512 byte User System Data area at 0x1fff_f800 (different USD_BASE, no EOPB0) */
+	target_add_commands(target, at32f405_cmd_list, target->driver);
+
+	/* Same registers and freeze bits in DBGMCU as F437 */
+	target->attach = at32f43_attach;
+	target->detach = at32f43_detach;
+	at32f43_configure_dbgmcu(target);
+
+	return true;
+}
+
 /* Identify any Arterytek devices with Cortex-M4 and FPEC at 0x4002_3c00 */
 bool at32f43x_probe(target_s *const target)
 {
@@ -410,6 +449,10 @@ bool at32f43x_probe(target_s *const target)
 	if ((series == AT32F423_SERIES_256KB || series == AT32F423_SERIES_128KB || series == AT32F423_SERIES_64KB) &&
 		project_id == 0x12U)
 		return at32f423_detect(target, series);
+	/* 0x15: F455 (CAN2.0), 0x16: F456 (CANFD), 0x17: F457 (CANFD & EMAC). All have OTGFS. */
+	if ((series == AT32F45_SERIES_512KB || series == AT32F45_SERIES_256KB) &&
+		(project_id == 0x15U || project_id == 0x16U || project_id == 0x17U))
+		return at32f45_detect(target, series);
 
 	return false;
 }
