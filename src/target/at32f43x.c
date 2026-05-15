@@ -124,13 +124,13 @@ static bool at32f405_cmd_option(target_s *target, int argc, const char **argv);
 static bool at32f43_cmd_option(target_s *target, int argc, const char **argv);
 static bool at32f43_cmd_uid(target_s *target, int argc, const char **argv);
 
-const command_s at32f43_cmd_list[] = {
+static const command_s at32f43_cmd_list[] = {
 	{"option", at32f43_cmd_option, "Manipulate option bytes"},
 	{"uid", at32f43_cmd_uid, "Print unique device ID"},
 	{NULL, NULL, NULL},
 };
 
-const command_s at32f405_cmd_list[] = {
+static const command_s at32f405_cmd_list[] = {
 	{"option", at32f405_cmd_option, "Manipulate option bytes"},
 	{"uid", at32f43_cmd_uid, "Print unique device ID"},
 	{NULL, NULL, NULL},
