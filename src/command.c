@@ -655,6 +655,10 @@ static bool cmd_rtt(target_s *target, int argc, const char **argv)
 		rtt_enabled = false;
 		rtt_found = false;
 	} else if (argc == 2 && strncmp(argv[1], "status", command_len) == 0) {
+		if (!target) {
+			gdb_out("Not attached to any target\n");
+			return true;
+		}
 		gdb_outf("rtt: %s found: %s ident: ", on_or_off(rtt_enabled), rtt_found ? "yes" : "no");
 		if (rtt_ident[0] == '\0')
 			gdb_out("off");
