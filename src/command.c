@@ -644,39 +644,51 @@ static const char *on_or_off(const bool value)
 	return value ? "on" : "off";
 }
 
+static bool cmd_rtt_status(target_s *const target)
+{
+	/* If we're not attached to anything, there's nothing to do here */
+	if (!target) {
+		gdb_out("Not attached to any target\n");
+		return true;
+	}
+	/* Otherwise start by outputting the RTT enable and identity state */
+	gdb_outf("RTT %s, control block %sfound, ident: %s\n", rtt_enabled ? "enabled" : "disabled",
+		rtt_found ? "" : "not ", rtt_ident[0] == '\0' ? "off" : rtt_ident);
+	/* Then specify whether we're halting for memory I/O and what the channel setup is */
+	gdb_outf("Using %shalting I/O, channels:", target_mem_access_needs_halt(target) ? "" : "non ");
+	for (size_t channel = 0U; channel < MAX_RTT_CHAN; ++channel) {
+		if (rtt_channel_enabled[channel])
+			gdb_outf(" %u", (unsigned)channel);
+	}
+	/* Display whether channel enables are automatic or not */
+	if (rtt_auto_channel)
+		gdb_out(" (auto)");
+	gdb_out("\n");
+	/* Now disable the RAM region being used and polling information */
+	if (rtt_flag_ram)
+		gdb_outf("Using range [%08" PRIx32 ":%08" PRIx32 ")\n", rtt_ram_start, rtt_ram_end);
+	gdb_outf("Polling at %" PRIu32 "ms to %" PRIu32 "ms intervals, %" PRIu32 " errors allowed\n", rtt_min_poll_ms,
+		rtt_max_poll_ms, rtt_max_poll_errs);
+	return true;
+}
+
 static bool cmd_rtt(target_s *target, int argc, const char **argv)
 {
-	const size_t command_len = argc > 1 ? strlen(argv[1]) : 0;
-	if (argc == 1 || (argc == 2 && strncmp(argv[1], "enabled", command_len) == 0)) {
+	/* If no arguments are given, return the status information */
+	if (argc == 1)
+		return cmd_rtt_status(target);
+	/* Otherwise work out how long the command string is and dispatch to a handler */
+	const size_t command_len = strlen(argv[1]);
+	if (argc == 2 && strncmp(argv[1], "enabled", command_len) == 0) {
 		rtt_enabled = true;
 		rtt_found = false;
 		memset(rtt_channel, 0, sizeof(rtt_channel));
 	} else if (argc == 2 && strncmp(argv[1], "disabled", command_len) == 0) {
 		rtt_enabled = false;
 		rtt_found = false;
-	} else if (argc == 2 && strncmp(argv[1], "status", command_len) == 0) {
-		if (!target) {
-			gdb_out("Not attached to any target\n");
-			return true;
-		}
-		gdb_outf("rtt: %s found: %s ident: ", on_or_off(rtt_enabled), rtt_found ? "yes" : "no");
-		if (rtt_ident[0] == '\0')
-			gdb_out("off");
-		else
-			gdb_outf("\"%s\"", rtt_ident);
-		gdb_outf(" halt: %s", on_or_off(target_mem_access_needs_halt(target)));
-		gdb_out(" channels: ");
-		if (rtt_auto_channel)
-			gdb_out("auto ");
-		for (size_t i = 0; i < MAX_RTT_CHAN; i++) {
-			if (rtt_channel_enabled[i])
-				gdb_outf("%" PRIu32 " ", (uint32_t)i);
-		}
-		if (rtt_flag_ram)
-			gdb_outf("ram: 0x%08" PRIx32 " 0x%08" PRIx32, rtt_ram_start, rtt_ram_end);
-		gdb_outf("\nmax poll ms: %" PRIu32 " min poll ms: %" PRIu32 " max errs: %" PRIu32 "\n", rtt_max_poll_ms,
-			rtt_min_poll_ms, rtt_max_poll_errs);
-	} else if (argc >= 2 && strncmp(argv[1], "channel", command_len) == 0) {
+	} else if (argc == 2 && strncmp(argv[1], "status", command_len) == 0)
+		return cmd_rtt_status(target);
+	else if (argc >= 2 && strncmp(argv[1], "channel", command_len) == 0) {
 		/* mon rtt channel switches to auto rtt channel selection
 		   mon rtt channel number... selects channels given */
 		for (size_t i = 0; i < MAX_RTT_CHAN; i++)
