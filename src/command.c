@@ -725,7 +725,7 @@ static bool cmd_rtt(target_s *target, int argc, const char **argv)
 		rtt_min_poll_ms = strtoul(argv[3], NULL, 0);
 		rtt_max_poll_errs = strtoul(argv[4], NULL, 0);
 	} else
-		gdb_out("what?\n");
+		gdb_out("Unrecognized command format\n");
 	return true;
 }
 #endif
