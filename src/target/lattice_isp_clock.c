@@ -51,6 +51,7 @@
 #define IR_USERCODE         0x17U
 #define IR_PROGRAM_USERCODE 0x1aU
 #define IR_PROGRAM_DISABLE  0x1eU
+#define IR_ADDRESS_INIT     0x21U
 #define IR_ERASE_DONE       0x24U
 #define IR_PROGRAM_INCR     0x27U
 #define IR_VERIFY_INCR      0x2aU
