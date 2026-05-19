@@ -54,7 +54,7 @@
 #define IR_ADDRESS_INIT     0x21U
 #define IR_ERASE_DONE       0x24U
 #define IR_PROGRAM_INCR     0x27U
-#define IR_VERIFY_INCR      0x2aU
+#define IR_READ_INCR        0x2aU
 #define IR_PROGRAM_DONE     0x2fU
 
 #define ISP_CLOCK_NVM_BASE 0x00000000U
