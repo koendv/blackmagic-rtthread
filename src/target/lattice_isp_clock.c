@@ -66,6 +66,8 @@ typedef struct isp_clock {
 
 static bool isp_clock_enter_flash_mode(target_s *target);
 static bool isp_clock_exit_flash_mode(target_s *target);
+static bool isp_clock_flash_prepare(target_flash_s *flash);
+static bool isp_clock_flash_done(target_flash_s *flash);
 static bool isp_clock_flash_erase(target_flash_s *flash, target_addr_t dest, size_t length);
 static bool isp_clock_flash_write(target_flash_s *flash, target_addr_t dest, const void *buffer, size_t length);
 
@@ -87,6 +89,8 @@ static void isp_clock_add_flash(target_s *const target)
 	flash->blocksize = ISP_CLOCK_NVM_SIZE;
 	/* Have to write 4 blocks at a time to get an integer number of bytes */
 	flash->writesize = 21U;
+	flash->prepare = isp_clock_flash_prepare;
+	flash->done = isp_clock_flash_done;
 	flash->erase = isp_clock_flash_erase;
 	flash->write = isp_clock_flash_write;
 	flash->erased = 0xffU;
@@ -126,6 +130,36 @@ bool isp_clock_exit_flash_mode(target_s *const target)
 	jtag_dev_write_ir(priv->dev_index, IR_PROGRAM_DISABLE);
 	return true;
 }
+
+static bool isp_clock_flash_prepare(target_flash_s *const flash)
+{
+	const target_s *const target = flash->t;
+	const isp_clock_s *const priv = (isp_clock_s *)target->priv;
+
+	if (flash->operation == FLASH_OPERATION_WRITE)
+		jtag_dev_write_ir(priv->dev_index, IR_ADDRESS_INIT);
+
+	return true;
+}
+
+static bool isp_clock_flash_done(target_flash_s *const flash)
+{
+	const target_s *const target = flash->t;
+	const isp_clock_s *const priv = (isp_clock_s *)target->priv;
+
+	if (flash->operation == FLASH_OPERATION_WRITE) {
+		const uint32_t freq = platform_max_frequency_get();
+		const uint32_t cycles = (freq * 50U) / 1000U;
+
+		jtag_dev_write_ir(priv->dev_index, IR_PROGRAM_DONE);
+
+		for (uint32_t cycle = 0U; cycle < cycles; cycle += 128U)
+			jtag_proc.jtagtap_cycle(false, false, MIN(128U, cycles - cycle));
+	}
+
+	return true;
+}
+
 static bool isp_clock_flash_erase(target_flash_s *flash, target_addr_t dest, size_t length)
 {
 	(void)dest;
