@@ -190,15 +190,17 @@ static bool isp_clock_flash_erase(target_flash_s *flash, target_addr_t dest, siz
 static bool isp_clock_flash_write(
 	target_flash_s *const flash, const target_addr_t dest, const void *const buffer, const size_t length)
 {
+	(void)dest;
 	const target_s *const target = flash->t;
 	const isp_clock_s *const priv = (isp_clock_s *)target->priv;
 	const uint8_t dev_index = priv->dev_index;
 
-	/* Set up the address to which we want to program data */
-	uint8_t address[2] = {0};
-	write_le2(address, 0U, dest);
-	jtag_dev_write_ir(dev_index, IR_ADDRESS_SHIFT);
-	jtag_dev_shift_dr(dev_index, NULL, address, 10U);
+	/* Setup for programming, auto-incrementing the EEPROM address */
+	jtag_dev_write_ir(dev_index, IR_PROGRAM_INCR);
+
+	/* Calculate the programming delay in cycles */
+	const uint32_t freq = platform_max_frequency_get();
+	const uint32_t cycles = (freq * 40U) / 1000U;
 
 	/* Byte access pointer to the source data buffer */
 	const uint8_t *const src = (const uint8_t *)buffer;
@@ -211,7 +213,7 @@ static bool isp_clock_flash_write(
 		for (size_t buffer_offset = 0U; buffer_offset < 42U; ++buffer_offset) {
 			/* Convert the position into a bit and byte index from the source data buffer */
 			const size_t offset = bit_offset + buffer_offset;
-			const size_t src_bit = offset & 7U;
+			const size_t src_bit = 7U - (offset & 7U);
 			const size_t src_byte = offset >> 3U;
 			/* Extract the value */
 			const bool value = ((src[src_byte] >> src_bit) & 1U) != 0U;
@@ -221,15 +223,13 @@ static bool isp_clock_flash_write(
 			data[data_byte] |= (uint8_t)value << data_bit;
 		}
 
-		/* Now we have the 42 bits to program set up in the buffer, load them into the data register */
-		jtag_dev_write_ir(dev_index, IR_DATA_SHIFT);
+		/* Now we have the 42 bits to program set up in the buffer, send them to the device for programming */
 		jtag_dev_shift_dr(dev_index, NULL, data, 42U);
 
-		/* Finally issue the programming instruction and pick the next block */
-		jtag_dev_write_ir(dev_index, IR_PROGRAM_INCR);
+		/* Wait for the slow-ass flash in the ispCLOCK to program */
+		for (uint32_t cycle = 0U; cycle < cycles; cycle += 128U)
+			jtag_proc.jtagtap_cycle(false, false, MIN(128U, cycles - cycle));
 	}
 
-	/* Now we're all good and done, discharge programming voltage again */
-	jtag_dev_write_ir(dev_index, IR_DISCHARGE);
 	return true;
 }
