@@ -64,6 +64,8 @@ typedef struct isp_clock {
 	uint8_t dev_index;
 } isp_clock_s;
 
+static void isp_clock_mem_read(target_s *target, void *dest, target_addr64_t src, size_t len);
+
 static bool isp_clock_enter_flash_mode(target_s *target);
 static bool isp_clock_exit_flash_mode(target_s *target);
 static bool isp_clock_flash_prepare(target_flash_s *flash);
@@ -111,10 +113,54 @@ void lattice_isp_clock_handler(const uint8_t dev_index)
 	priv->dev_index = dev_index;
 	target->priv = priv;
 	target->priv_free = free;
+	target->mem_read = isp_clock_mem_read;
 
 	target->enter_flash_mode = isp_clock_enter_flash_mode;
 	target->exit_flash_mode = isp_clock_exit_flash_mode;
 	isp_clock_add_flash(target);
+}
+
+static void isp_clock_mem_read(target_s *const target, void *const dest, const target_addr64_t src, const size_t length)
+{
+	const isp_clock_s *const priv = (isp_clock_s *)target->priv;
+	const uint8_t dev_index = priv->dev_index;
+
+	/* Set up the address to which we want to program data */
+	uint8_t address[2] = {0};
+	write_le2(address, 0U, src);
+	jtag_dev_write_ir(dev_index, IR_ADDRESS_SHIFT);
+	jtag_dev_shift_dr(dev_index, NULL, address, 10U);
+
+	/* Setup for programming, auto-incrementing the EEPROM address */
+	jtag_dev_write_ir(dev_index, IR_READ_INCR);
+
+	/* Ensure that the destination buffer is clean */
+	memset(dest, 0U, length);
+
+	/* Byte access pointer to the destination data buffer */
+	uint8_t *const buffer = (uint8_t *)dest;
+	/* Loop through the data to read 42 bits at a time */
+	for (size_t bit_offset = 0U; bit_offset < length * 8U; bit_offset += 42U) {
+		/* Buffer for the 5.25 bytes of data needed per read instruction */
+		uint8_t data[6] = {0};
+		/* Read the 42 bits for this address from the device */
+		jtag_dev_shift_dr(dev_index, data, NULL, 42U);
+
+		/* Copy out the next 42 bits of data from the buffer */
+		for (size_t buffer_offset = 0U; buffer_offset < 42U; ++buffer_offset) {
+			/* Convert the position into a bit and byte index into the intermediary buffer */
+			const size_t data_bit = buffer_offset & 7U;
+			const size_t data_byte = buffer_offset >> 3U;
+			/* Extract the value */
+			const bool value = ((data[data_byte] >> data_bit) & 1U) != 0U;
+			/* Convert the position into a bit and byte index from the destination data buffer */
+			const size_t offset = bit_offset + buffer_offset;
+			const size_t dest_bit = offset & 7U;
+			const size_t dest_byte = offset >> 3U;
+
+			buffer[dest_byte] |= (uint8_t)value << dest_bit;
+		}
+	}
 }
 
 bool isp_clock_enter_flash_mode(target_s *const target)
