@@ -445,8 +445,7 @@ const jtag_dev_descr_s dev_descr[] = {
 		.handler = lattice_isp_clock_handler,
 		.ir_quirks =
 			{
-				.ir_length = 8U,
-				.ir_value = 0x1dU,
+				.ir_length = BMD_QUIRK_IGNORE_IR_VALUE(8U),
 			},
 	},
 	{
