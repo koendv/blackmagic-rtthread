@@ -457,8 +457,7 @@ const jtag_dev_descr_s dev_descr[] = {
 		.handler = lattice_ecp5_handler,
 		.ir_quirks =
 			{
-				.ir_length = 8U,
-				.ir_value = 0x1U,
+				.ir_length = BMD_QUIRK_IGNORE_IR_VALUE(8U),
 			},
 	},
 	{
@@ -470,8 +469,7 @@ const jtag_dev_descr_s dev_descr[] = {
 		.handler = lattice_ecp5_handler,
 		.ir_quirks =
 			{
-				.ir_length = 8U,
-				.ir_value = 0x1U,
+				.ir_length = BMD_QUIRK_IGNORE_IR_VALUE(8U),
 			},
 	},
 	{
@@ -483,8 +481,7 @@ const jtag_dev_descr_s dev_descr[] = {
 		.handler = lattice_ecp5_handler,
 		.ir_quirks =
 			{
-				.ir_length = 8U,
-				.ir_value = 0x1U,
+				.ir_length = BMD_QUIRK_IGNORE_IR_VALUE(8U),
 			},
 	},
 	{
@@ -496,8 +493,7 @@ const jtag_dev_descr_s dev_descr[] = {
 		.handler = lattice_ecp5_handler,
 		.ir_quirks =
 			{
-				.ir_length = 8U,
-				.ir_value = 0x1U,
+				.ir_length = BMD_QUIRK_IGNORE_IR_VALUE(8U),
 			},
 	},
 	{
@@ -509,8 +505,7 @@ const jtag_dev_descr_s dev_descr[] = {
 		.handler = lattice_ecp5_handler,
 		.ir_quirks =
 			{
-				.ir_length = 8U,
-				.ir_value = 0x1U,
+				.ir_length = BMD_QUIRK_IGNORE_IR_VALUE(8U),
 			},
 	},
 	{
@@ -522,8 +517,7 @@ const jtag_dev_descr_s dev_descr[] = {
 		.handler = lattice_ecp5_handler,
 		.ir_quirks =
 			{
-				.ir_length = 8U,
-				.ir_value = 0x1U,
+				.ir_length = BMD_QUIRK_IGNORE_IR_VALUE(8U),
 			},
 	},
 	{
@@ -535,8 +529,7 @@ const jtag_dev_descr_s dev_descr[] = {
 		.handler = lattice_ecp5_handler,
 		.ir_quirks =
 			{
-				.ir_length = 8U,
-				.ir_value = 0x1U,
+				.ir_length = BMD_QUIRK_IGNORE_IR_VALUE(8U),
 			},
 	},
 	{
@@ -548,8 +541,7 @@ const jtag_dev_descr_s dev_descr[] = {
 		.handler = lattice_ecp5_handler,
 		.ir_quirks =
 			{
-				.ir_length = 8U,
-				.ir_value = 0x1U,
+				.ir_length = BMD_QUIRK_IGNORE_IR_VALUE(8U),
 			},
 	},
 	{
@@ -561,8 +553,7 @@ const jtag_dev_descr_s dev_descr[] = {
 		.handler = lattice_ecp5_handler,
 		.ir_quirks =
 			{
-				.ir_length = 8U,
-				.ir_value = 0x1U,
+				.ir_length = BMD_QUIRK_IGNORE_IR_VALUE(8U),
 			},
 	},
 	{
@@ -574,8 +565,7 @@ const jtag_dev_descr_s dev_descr[] = {
 		.handler = lattice_ecp5_handler,
 		.ir_quirks =
 			{
-				.ir_length = 8U,
-				.ir_value = 0x1U,
+				.ir_length = BMD_QUIRK_IGNORE_IR_VALUE(8U),
 			},
 	},
 #endif
