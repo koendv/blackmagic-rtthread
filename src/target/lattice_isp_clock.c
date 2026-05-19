@@ -66,7 +66,6 @@ typedef struct isp_clock {
 static bool isp_clock_enter_flash_mode(target_s *target);
 static bool isp_clock_exit_flash_mode(target_s *target);
 static bool isp_clock_flash_write(target_flash_s *flash, target_addr_t dest, const void *buffer, size_t length);
-static bool isp_clock_flash_mass_erase(target_flash_s *flash, platform_timeout_s *print_progress);
 
 static void isp_clock_add_flash(target_s *const target)
 {
@@ -86,7 +85,6 @@ static void isp_clock_add_flash(target_s *const target)
 	flash->blocksize = ISP_CLOCK_NVM_SIZE;
 	/* Have to write 4 blocks at a time to get an integer number of bytes */
 	flash->writesize = 21U;
-	flash->mass_erase = isp_clock_flash_mass_erase;
 	flash->write = isp_clock_flash_write;
 	flash->erased = 0xffU;
 	target_add_flash(target, flash);
@@ -169,21 +167,6 @@ static bool isp_clock_flash_write(
 	}
 
 	/* Now we're all good and done, discharge programming voltage again */
-	jtag_dev_write_ir(dev_index, IR_DISCHARGE);
-	return true;
-}
-
-static bool isp_clock_flash_mass_erase(target_flash_s *flash, platform_timeout_s *print_progress)
-{
-	(void)print_progress;
-	const target_s *const target = flash->t;
-	const isp_clock_s *const priv = (isp_clock_s *)target->priv;
-	const uint8_t dev_index = priv->dev_index;
-
-	/* Issue to the device that we want it to bulk erase */
-	jtag_dev_write_ir(dev_index, IR_BULK_ERASE);
-
-	/* Then ask it to discharge the supply used for this now it's done */
 	jtag_dev_write_ir(dev_index, IR_DISCHARGE);
 	return true;
 }
