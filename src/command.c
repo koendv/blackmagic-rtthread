@@ -130,7 +130,8 @@ static const command_s cmd_list[] = {
 #endif
 #ifdef ENABLE_RTT
 	{"rtt", cmd_rtt,
-		"[enable|disable|status|channel [0..15 ...]|ident [STR]|cblock|ram [RAM_START RAM_END]|poll [MAXMS MINMS "
+		"[enable|disable|detect|status|channel [0..15 ...]|ident [STR]|cblock|ram [RAM_START RAM_END]|poll [MAXMS "
+		"MINMS "
 		"MAXERR]]"},
 #endif
 #ifdef PLATFORM_HAS_TRACESWO
@@ -667,6 +668,20 @@ static bool cmd_rtt_status(target_s *const target)
 	return true;
 }
 
+static bool cmd_rtt_detect(target_s *const target)
+{
+	if (target == NULL) {
+		gdb_outf("Not attached to target\n");
+		return true;
+	}
+	poll_rtt(target);
+	if (rtt_found)
+		gdb_outf("Found RTT control block at: %08" PRIx32 "\n", rtt_cbaddr);
+	else
+		gdb_outf("Failed to locate RTT control block\n");
+	return true;
+}
+
 static bool cmd_rtt(target_s *target, int argc, const char **argv)
 {
 	/* If no arguments are given, return the status information */
@@ -691,6 +706,8 @@ static bool cmd_rtt(target_s *target, int argc, const char **argv)
 	}
 	if (!strncmp(command, "status", command_len) && argc == 2)
 		return cmd_rtt_status(target);
+	if (!strncmp(command, "detect", command_len) && argc == 2)
+		return cmd_rtt_detect(target);
 	if (!strncmp(command, "channel", command_len)) {
 		/* Reset the enables */
 		for (size_t channel = 0; channel < MAX_RTT_CHAN; ++channel)
