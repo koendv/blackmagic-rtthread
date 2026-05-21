@@ -251,7 +251,8 @@ static void remote_packet_process_jtag(gdb_packet_s *const packet)
 	}
 
 	case REMOTE_JTAG_ENSURE_IDLE: /* JI = re-cycle IR after indirect resets */
-		remote_dp.ensure_idle(&remote_dp);
+		if (remote_dp.ensure_idle)
+			remote_dp.ensure_idle(&remote_dp);
 		remote_respond(REMOTE_RESP_OK, 0);
 		break;
 
