@@ -780,6 +780,27 @@ static void cortexm_pc_write(target_s *target, const uint32_t val)
 }
 
 /*
+ * On some targets like AT32F403A in JTAG transport
+ * without the physical system reset wire connected
+ * during AP write AIRCR and DP read CTRL/STAT
+ * adiv5_jtag_raw_access() will raise an exception of type 1 = ERROR,
+ * because JTAG-DP got reset, too.
+ * Deal with it (catch the expected exception) and advance TAP from TLR to RTI.
+ */
+static void cortexm_reset_aircr_recoverable(target_s *const target, adiv5_debug_port_s *const dp)
+{
+	TRY (EXCEPTION_ERROR) {
+		target_mem32_write32(target, CORTEXM_AIRCR, CORTEXM_AIRCR_VECTKEY | CORTEXM_AIRCR_SYSRESETREQ);
+	}
+	CATCH () {
+	default:
+		if (dp->ensure_idle)
+			dp->ensure_idle(dp);
+		break;
+	}
+}
+
+/*
  * The following three routines implement target halt/resume
  * using the core debug registers in the NVIC.
  */
@@ -808,10 +829,7 @@ static void cortexm_reset(target_s *const target)
 		 * No reset seen yet, maybe as nRST is not connected, or device has TOPT_INHIBIT_NRST set.
 		 * Trigger reset by AIRCR.
 		 */
-		target_mem32_write32(target, CORTEXM_AIRCR, CORTEXM_AIRCR_VECTKEY | CORTEXM_AIRCR_SYSRESETREQ);
-		platform_delay(10);
-		if (dp->ensure_idle)
-			dp->ensure_idle(dp);
+		cortexm_reset_aircr_recoverable(target, dp);
 	}
 
 	/* If target needs to do something extra (see Atmel SAM4L for example) */
