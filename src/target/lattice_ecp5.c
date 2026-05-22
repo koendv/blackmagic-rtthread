@@ -48,6 +48,23 @@
 // Configuration target is the device EFUSE array
 #define ECP5_TARGET_EFUSE 1U
 
+// No BSE error
+#define ECP5_BSE_ERROR_NONE 0U
+// ID error
+#define ECP5_BSE_ERROR_ID   1U
+// Illegal command
+#define ECP5_BSE_ERROR_CMD  2U
+// CRC error
+#define ECP5_BSE_ERROR_CRC  3U
+// Configuration preamble error
+#define ECP5_BSE_ERROR_PRMB 4U
+// Configuration aborted by user
+#define ECP5_BSE_ERROR_ABRT 5U
+// Data overflow error
+#define ECP5_BSE_ERROR_OVFL 6U
+// Configuration exceeded SRAM array size
+#define ECP5_BSE_ERROR_SDM  7U
+
 #define ECP5_STATUS_TRANSPARENT_MASK         1U
 #define ECP5_STATUS_TRANSPARENT_SHIFT        0U
 // If the device is in transparent mode
@@ -692,28 +709,28 @@ static bool ecp5_read_reg_status(target_s *target, int argc, const char **argv)
 	gdb_outf("Primary Bitstream Failure: %" PRIu32 "\n", ECP5_STATUS_PRIMARY_CFG_FAIL(status_register));
 	gdb_outf("BSE Status:\n");
 	switch (ECP5_STATUS_BSE_ERROR(status_register)) {
-	case 0x0U:
+	case ECP5_BSE_ERROR_NONE:
 		gdb_outf("\tNo Errors\n");
 		break;
-	case 0x1U:
+	case ECP5_BSE_ERROR_ID:
 		gdb_outf("\tID Error\n");
 		break;
-	case 0x2U:
+	case ECP5_BSE_ERROR_CMD:
 		gdb_outf("\tIllegal Command\n");
 		break;
-	case 0x3U:
+	case ECP5_BSE_ERROR_CRC:
 		gdb_outf("\tCRC Error\n");
 		break;
-	case 0x4U:
+	case ECP5_BSE_ERROR_PRMB:
 		gdb_outf("\tPreamble Error\n");
 		break;
-	case 0x5U:
+	case ECP5_BSE_ERROR_ABRT:
 		gdb_outf("\tConfiguration Aborted By User\n");
 		break;
-	case 0x6U:
+	case ECP5_BSE_ERROR_OVFL:
 		gdb_outf("\tData Overflow\n");
 		break;
-	case 0x7U:
+	case ECP5_BSE_ERROR_SDM:
 		gdb_outf("\tConfiguration too big for device SRAM\n");
 		break;
 	}
