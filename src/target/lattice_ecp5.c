@@ -189,29 +189,48 @@
 // If the device is in flow-through mode
 #define ECP5_STATUS_FLOW_MODE(reg)    REGISTER_FIELD(reg, ECP5_STATUS_FLOW_MODE_MASK, ECP5_STATUS_FLOW_MODE_SHIFT)
 
-#define ECP5_CTRL0_MSPI_CLK_MASK      0x1fU
-#define ECP5_CTRL0_MSPI_CLK_SHIFT     0U
+#define ECP5_CTRL_SLEW_SLOW 0U
+#define ECP5_CTRL_SLEW_MED  1U
+#define ECP5_CTRL_SLEW_FAST 2U
+
+// No overload behaviour
+#define ECP5_CTRL_PDONE_NONE   0U // or 1U
+// Overload `PROGRAM_DONE` with `BYPASS`
+#define ECP5_CTRL_PDONE_BYPASS 2U
+// Overload `PROGRAM_DONE` with `FLOW_THROUGH`
+#define ECP5_CTRL_PDONE_FLOW   3U
+
+#define ECP5_CTRL0_MSPI_CLK_MASK  0x1fU
+#define ECP5_CTRL0_MSPI_CLK_SHIFT 0U
+// SPI Controller clock division ratio
 #define ECP5_CTRL0_MSPI_CLK(reg)      REGISTER_FIELD(reg, ECP5_CTRL0_MSPI_CLK_MASK, ECP5_CTRL0_MSPI_CLK_SHIFT)
 #define ECP5_CTRL0_SLEW_MASK          0x3U
 #define ECP5_CTRL0_SLEW_SHIFT         6U
+// Configuration output slew rate
 #define ECP5_CTRL0_SLEW(reg)          REGISTER_FIELD(reg, ECP5_CTRL0_SLEW_MASK, ECP5_CTRL0_SLEW_SHIFT)
 #define ECP5_CTRL0_RSVD0_MASK         0x1ffU
 #define ECP5_CTRL0_RSVD0_SHIFT        8U
+// Reserved
 #define ECP5_CTRL0_RSVD0(reg)         REGISTER_FIELD(reg, ECP5_CTRL0_RSVD0_MASK, ECP5_CTRL0_RSVD0_SHIFT)
 #define ECP5_CTRL0_PDONE_MASK         0x3U
 #define ECP5_CTRL0_PDONE_SHIFT        18U
+// PROGRAM_DONE overload control
 #define ECP5_CTRL0_PDONE(reg)         REGISTER_FIELD(reg, ECP5_CTRL0_PDONE_MASK, ECP5_CTRL0_PDONE_SHIFT)
 #define ECP5_CTRL0_RSVD1_MASK         0x80U
 #define ECP5_CTRL0_RSVD1_SHIFT        20U
+// Reserved
 #define ECP5_CTRL0_RSVD1(reg)         REGISTER_FIELD(reg, ECP5_CTRL0_RSVD1_MASK, ECP5_CTRL0_RSVD1_SHIFT)
 #define ECP5_CTRL0_NDR_MASK           1U
 #define ECP5_CTRL0_NDR_SHIFT          28U
+// Non-Disturbing reconfiguration (I/O buffers are left configured and in their current state)
 #define ECP5_CTRL0_NDR(reg)           REGISTER_FIELD(reg, ECP5_CTRL0_NDR_MASK, ECP5_CTRL0_NDR_SHIFT)
 #define ECP5_CTRL0_WAKEUP_TRANS_MASK  1U
 #define ECP5_CTRL0_WAKEUP_TRANS_SHIFT 29U
+// Transparent configuration `PROGRAMN` control
 #define ECP5_CTRL0_WAKEUP_TRANS(reg)  REGISTER_FIELD(reg, ECP5_CTRL0_WAKEUP_TRANS_MASK, ECP5_CTRL0_WAKEUP_TRANS_SHIFT)
 #define ECP5_CTRL0_RSVD2_MASK         0x3U
 #define ECP5_CTRL0_RSVD2_SHIFT        30U
+// Reserved
 #define ECP5_CTRL0_RSVD2(reg)         REGISTER_FIELD(reg, ECP5_CTRL0_RSVD2_MASK, ECP5_CTRL0_RSVD2_SHIFT)
 
 #define ECP5_SRAM_BASE  0x00000000U
