@@ -43,6 +43,11 @@
 
 #define REGISTER_FIELD(reg, mask, shift) (((reg) >> (shift)) & (mask))
 
+// Configuration target is the device SRAM array
+#define ECP5_TARGET_SRAM 0U
+// Configuration target is the device EFUSE array
+#define ECP5_TARGET_EFUSE 1U
+
 #define ECP5_STATUS_TRANSPARENT_MASK         1U
 #define ECP5_STATUS_TRANSPARENT_SHIFT        0U
 // If the device is in transparent mode
