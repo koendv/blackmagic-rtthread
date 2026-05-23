@@ -117,6 +117,8 @@ struct breakwatch {
 #endif
 };
 
+_Static_assert(sizeof(breakwatch_s) == 40U, "Breakwatch size unexpected");
+
 #define MAX_CMDLINE 81
 
 typedef void (*priv_free_func)(void *flash);
