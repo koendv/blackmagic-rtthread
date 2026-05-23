@@ -164,9 +164,9 @@ if is_firmware_build and get_option('print_memory_usage')
 endif
 
 # We need to know the size of a pointer for the machine running the code
-add_project_link_arguments('-DCONFIG_POINTER_SIZE=@0@'.format(cc_host.sizeof('void *')), language: 'c')
+add_project_arguments('-DCONFIG_POINTER_SIZE=@0@'.format(cc_host.sizeof('void *')), language: 'c')
 if is_cross_build
-	add_project_link_arguments('-DCONFIG_POINTER_SIZE=@0@'.format(cc_native.sizeof('void *')), language: 'c', native: true)
+	add_project_arguments('-DCONFIG_POINTER_SIZE=@0@'.format(cc_native.sizeof('void *')), language: 'c', native: true)
 endif
 
 subdir('src')
