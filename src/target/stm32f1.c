@@ -533,6 +533,24 @@ static bool at32f403a_407_detect(target_s *const target, const uint16_t part_id)
 	return stm32f1_configure_dbgmcu(target, STM32F1_DBGMCU_CONFIG);
 }
 
+static bool at32f403a_407_locked_detect(target_s *const target, const uint16_t part_id)
+{
+	// All parts have 96 KiB SRAM
+	target_add_ram32(target, STM32F1_SRAM_BASE, 96U * 1024U);
+	/* On AT32F403A/F407 SoC, Cortex-M4F allows SRAM access without halting */
+	target->target_options |= TOPT_NON_HALTING_MEM_IO;
+	target->driver = "AT32F403A/407 (locked)";
+	target->part_id = part_id;
+	target->target_options |= STM32F1_TOPT_32BIT_WRITES;
+	target->mass_erase = stm32f1_mass_erase;
+
+	// AT32F403A/F407 have 48 bytes of User System Data and a UID, so enable stm32f1_cmd_option
+	target_add_commands(target, stm32f1_cmd_list, target->driver);
+
+	/* Now we have a stable debug environment, make sure the WDTs + WFI and WFE instructions can't cause problems */
+	return stm32f1_configure_dbgmcu(target, STM32F1_DBGMCU_CONFIG);
+}
+
 static bool at32f415_detect(target_s *const target, const uint16_t part_id)
 {
 	switch (part_id) {
@@ -740,7 +758,7 @@ bool at32f40x_probe(target_s *const target)
 		if (project_id == 7U || project_id == 8U)
 			return at32f403a_407_detect(target, part_id);
 		if (project_id == 0xffU)
-			return false;
+			return at32f403a_407_locked_detect(target, part_id);
 	}
 	/* Value line. 0x05: F415 (OTGFS), 0x04: F413 (CAN+USB). */
 	if (series == AT32F41_SERIES) {
