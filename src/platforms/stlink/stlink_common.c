@@ -56,6 +56,10 @@ uint32_t detect_rev(void)
 	/* Override detection to use clone pinmap (i.e. PB6 as nRST). */
 	return 0x101;
 #elif defined(STLINK_V2_ISOL)
+	/* PA12 is USB D+ pin */
+	gpio_set_mode(GPIOA, GPIO_MODE_OUTPUT_2_MHZ, GPIO_CNF_OUTPUT_OPENDRAIN, GPIO12);
+	/* We need to pull PA12 briefly to GND to trigger re-enumeration */
+	gpio_clear(GPIOA, GPIO12);
 	/* Override detection to stlink v2 isol*/
 	return 0x103;
 #else
