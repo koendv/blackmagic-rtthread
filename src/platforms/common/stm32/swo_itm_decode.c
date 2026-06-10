@@ -21,7 +21,12 @@
  * It puts the decoded data onto the aux USB serial interface for consumption.
  */
 
+#include <rtthread.h>
 #include <rtconfig.h>
+#define DBG_TAG "SWO"
+#define DBG_LVL DBG_INFO
+#include <rtdbg.h>
+
 #include "general.h"
 #include "platform.h"
 #include "swo.h"
@@ -75,6 +80,12 @@ uint16_t swo_itm_decode(const uint8_t *data, uint16_t len)
 			--itm_packet_length;
 		}
 	}
+
+	if (itm_decoded_buffer_index) {
+		debug_serial_send_stdout(itm_decoded_buffer, itm_decoded_buffer_index);
+		itm_decoded_buffer_index = 0U;
+	}
+
 	return len;
 }
 
