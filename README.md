@@ -15,7 +15,7 @@ This includes support for ARM and RISC-V devices, the complete list can be found
 [![Discord](https://img.shields.io/discord/613131135903596547?logo=discord)](https://discord.gg/P7FYThy)
 [![Current release](https://codeberg.org/blackmagic-debug/blackmagic/badges/release.svg)](https://codeberg.org/blackmagic-debug/blackmagic/releases)
 [![CI status](https://ci.codeberg.org/api/badges/16587/status.svg)](https://ci.codeberg.org/repos/16587)
-[![AI free project](https://badges.ws/badge/NO-AI-ff0000)](https://github.com/blackmagic-debug/blackmagic/blob/main/CONTRIBUTING.md#contributing)
+[![AI free project](https://badges.ws/badge/NO-AI-ff0000)](https://codeberg.org/blackmagic-debug/blackmagic/src/branch/main/CODE_OF_CONDUCT.md#strict-no-llm-no-ai-policy)
 
 Table of contents:
 
@@ -27,7 +27,7 @@ Table of contents:
 ## Resources
 
 * [Official website](https://black-magic.org/index.html)
-* [Binary builds](https://github.com/blackmagic-debug/blackmagic/releases)
+* [Binary builds](https://codeberg.org/blackmagic-debug/blackmagic/releases)
 
 ## Usage
 
