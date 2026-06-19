@@ -236,6 +236,7 @@ adiv5_access_port_s *adiv5_new_ap(adiv5_debug_port_s *const dp, const uint8_t ap
 }
 
 /* No real AP on RP2040. Special setup.*/
+#ifdef CONFIG_RP
 static void rp2040_rescue_setup(adiv5_debug_port_s *dp)
 {
 	adiv5_access_port_s *ap = calloc(1, sizeof(*ap));
@@ -247,6 +248,7 @@ static void rp2040_rescue_setup(adiv5_debug_port_s *dp)
 
 	rp2040_rescue_probe(ap);
 }
+#endif
 
 static void adiv5_dp_clear_sticky_errors(adiv5_debug_port_s *dp)
 {
@@ -283,6 +285,7 @@ uint32_t adiv5_dp_read_dpidr(adiv5_debug_port_s *const dp)
 	return dpidr;
 }
 
+#ifdef CONFIG_NXP
 static bool s32k3xx_dp_prepare(adiv5_debug_port_s *const dp)
 {
 	/* Is this an S32K344? */
@@ -325,6 +328,7 @@ static bool s32k3xx_dp_prepare(adiv5_debug_port_s *const dp)
 
 	return true;
 }
+#endif
 
 static bool adiv5_power_cycle_aps(adiv5_debug_port_s *const dp)
 {
@@ -473,10 +477,12 @@ void adiv5_dp_init(adiv5_debug_port_s *const dp)
 			(targetid & (ADIV5_DP_TARGETID_TDESIGNER_MASK | ADIV5_DP_TARGETID_TPARTNO_MASK)) | 1U;
 	}
 
+#ifdef CONFIG_RP
 	if (dp->designer_code == JEP106_MANUFACTURER_RASPBERRY && dp->partno == 0x2U) {
 		rp2040_rescue_setup(dp);
 		return;
 	}
+#endif
 
 	/* Try to power cycle the APs, affecting a reset on them */
 	if (!adiv5_power_cycle_aps(dp)) {
@@ -494,13 +500,16 @@ void adiv5_dp_init(adiv5_debug_port_s *const dp)
 		return;
 	}
 
+#ifdef CONFIG_NXP
 	if (dp->target_designer_code == JEP106_MANUFACTURER_NXP)
 		lpc55_dp_prepare(dp);
+#endif
 
 	/* Probe for APs on this DP */
 	size_t invalid_aps = 0U;
 	dp->refcnt++;
 
+#ifdef CONFIG_NXP
 	if (dp->target_designer_code == JEP106_MANUFACTURER_FREESCALE) {
 		/* S32K3XX will requires special handling, do so and skip the AP enumeration */
 		if (s32k3xx_dp_prepare(dp)) {
@@ -508,6 +517,7 @@ void adiv5_dp_init(adiv5_debug_port_s *const dp)
 			return;
 		}
 	}
+#endif
 
 	for (size_t i = 0; i < 256U && invalid_aps < 8U; ++i) {
 		adiv5_access_port_s *ap = adiv5_new_ap(dp, i);
@@ -524,11 +534,19 @@ void adiv5_dp_init(adiv5_debug_port_s *const dp)
 			continue;
 		}
 
+#ifdef CONFIG_NXP
 		kinetis_mdm_probe(ap);
+#endif
+#ifdef CONFIG_NRF
 		nrf51_ctrl_ap_probe(ap);
 		nrf54l_ctrl_ap_probe(ap);
+#endif
+#ifdef CONFIG_EFM32
 		efm32_aap_probe(ap);
+#endif
+#ifdef CONFIG_NXP
 		lpc55_dmap_probe(ap);
+#endif
 
 		if (ADIV5_AP_IDR_CLASS(ap->idr) == ADIV5_AP_IDR_CLASS_MEM) {
 			/* Try to prepare the AP if it seems to be a AHB3 MEM-AP */
