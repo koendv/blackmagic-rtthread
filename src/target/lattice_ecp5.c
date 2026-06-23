@@ -300,7 +300,7 @@ static void ecp5_spi_read(target_s *target, uint16_t command, target_addr_t addr
 static void ecp5_spi_write(
 	target_s *target, uint16_t command, target_addr_t address, const void *buffer, size_t length);
 static void ecp5_spi_run_command(target_s *target, uint16_t command, target_addr_t address);
-static void ecp5_spi_xfr_jtag(target_s *target, uint8_t *data_out, const uint8_t *data_in, size_t length);
+static void ecp5_spi_xfr_jtag(target_s *target, uint8_t *data_out, const uint8_t *data_in, size_t length, bool inhibit);
 
 static bool ecp5_sram_done(target_flash_s *flash);
 static bool ecp5_sram_erase(target_flash_s *flash, target_addr_t addr, size_t length);
@@ -531,7 +531,7 @@ static void ecp5_spi_read(target_s *const target, const uint16_t command, const 
 
 	memset(ctx->cmd_buffer + offset, 0, length);
 
-	ecp5_spi_xfr_jtag(target, ctx->data_buffer, ctx->cmd_buffer, length + offset);
+	ecp5_spi_xfr_jtag(target, ctx->data_buffer, ctx->cmd_buffer, length + offset, false);
 	memcpy(buffer, ctx->data_buffer + offset, length);
 }
 
@@ -555,7 +555,7 @@ static void ecp5_spi_write(target_s *const target, const uint16_t command, const
 	if (buffer)
 		memcpy(ctx->cmd_buffer + offset, buffer, length);
 
-	ecp5_spi_xfr_jtag(target, NULL, ctx->cmd_buffer, length + offset);
+	ecp5_spi_xfr_jtag(target, NULL, ctx->cmd_buffer, length + offset, true);
 }
 
 static void ecp5_spi_run_command(target_s *const target, const uint16_t command, const target_addr_t address)
@@ -563,12 +563,13 @@ static void ecp5_spi_run_command(target_s *const target, const uint16_t command,
 	ecp5_spi_write(target, command, address, NULL, 0UL);
 }
 
-static void ecp5_spi_xfr_jtag(
-	target_s *const target, uint8_t *const data_out, const uint8_t *const data_in, const size_t length)
+static void ecp5_spi_xfr_jtag(target_s *const target, uint8_t *const data_out, const uint8_t *const data_in,
+	const size_t length, const bool inhibit)
 {
 	const ecp5_ctx_s *const ctx = (ecp5_ctx_s *)target->priv;
 	const uint8_t dev_index = ctx->device_index;
 	const jtag_dev_s *const device = &jtag_devs[dev_index];
+	const bool inhibit_prescan = device->dr_prescan == 0U || inhibit;
 
 	/* Switch into Shift-DR */
 	jtagtap_shift_dr();
@@ -576,7 +577,7 @@ static void ecp5_spi_xfr_jtag(
 	uint8_t tap_out;
 	for (size_t idx = 0U; idx < length; ++idx) {
 		const uint8_t tap_in = reverse_bits8(data_in[idx]);
-		jtag_proc.jtagtap_tdi_tdo_seq(&tap_out, (idx + 1U) == length && !device->dr_prescan, &tap_in, 8U);
+		jtag_proc.jtagtap_tdi_tdo_seq(&tap_out, (idx + 1U) == length && inhibit_prescan, &tap_in, 8U);
 		if (data_out)
 			data_out[idx] = reverse_bits8(tap_out);
 	}
@@ -595,9 +596,7 @@ static void ecp5_spi_xfr_jtag(
 		}
 	}
 
-	DEBUG_PROTO("%s: %" PRIu32 " cycles\n", __func__, (uint32_t)length * 8U);
-
-	if (device->dr_prescan) {
+	if (!inhibit_prescan) {
 		/* Squeeze the trailing bits from the SPI transaction out of the chain */
 		uint8_t trailing_bits[4];
 		jtag_proc.jtagtap_tdi_tdo_seq(trailing_bits, true, NULL, device->dr_prescan);
