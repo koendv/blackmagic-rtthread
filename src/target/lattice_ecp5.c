@@ -684,9 +684,6 @@ static bool ecp5_sram_write(
 	for (size_t idx = 0U; idx < length; ++idx) {
 		const uint8_t tap_in = reverse_bits8(data_in[idx]);
 		jtag_proc.jtagtap_tdi_tdo_seq(&tap_out, (idx + 1U) == length && !device->dr_postscan, &tap_in, 8U);
-
-		if (idx % 8192U)
-			DEBUG_TARGET("%s: %" PRIu32 "/%" PRIu32 " bytes written\n", __func__, (uint32_t)idx, (uint32_t)length);
 	}
 
 	/* Make sure we're in Exit1-DR having clocked out 1's for any more devices on the chain */
