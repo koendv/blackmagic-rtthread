@@ -216,7 +216,7 @@
 	}
 /*
  * 3 leader bytes + 2 bytes for AP select + 8 for CSW + 2 for the alignment +
- * 8 for the address and 8 for the count and one trailer gives 34U
+ * 8 for the address and 8 for the count and one trailer gives 32U
  */
 #define REMOTE_ADIV5_MEM_WRITE_LENGTH 32U
 
