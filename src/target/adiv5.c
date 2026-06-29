@@ -433,7 +433,7 @@ void adiv5_dp_init(adiv5_debug_port_s *const dp)
 			dp->partno = 0U;
 			dp->quirks = 0U;
 		}
-	} else if (dp->version == 0)
+	} else if (dp->version == 0U)
 		/* DP v0 */
 		DEBUG_WARN("DPv0 detected based on JTAG IDCode\n");
 
