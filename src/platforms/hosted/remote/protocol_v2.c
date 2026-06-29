@@ -79,10 +79,9 @@ bool remote_v2_jtag_init(void)
 
 uint32_t remote_v2_get_comms_frequency(void)
 {
+	platform_buffer_write(REMOTE_FREQ_GET_STR, sizeof(REMOTE_FREQ_GET_STR));
 	char buffer[REMOTE_MAX_MSG_SIZE];
-	int length = snprintf(buffer, REMOTE_MAX_MSG_SIZE, "%s", REMOTE_FREQ_GET_STR);
-	platform_buffer_write(buffer, length);
-	length = platform_buffer_read(buffer, REMOTE_MAX_MSG_SIZE);
+	const int length = platform_buffer_read(buffer, REMOTE_MAX_MSG_SIZE);
 	if (length < 1 || buffer[0] == REMOTE_RESP_ERR)
 		return FREQ_FIXED;
 	uint32_t freq;
