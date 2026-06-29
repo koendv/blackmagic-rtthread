@@ -192,7 +192,7 @@
 			REMOTE_ADIV5_ADDR64, REMOTE_ADIV5_CSW, REMOTE_ADIV5_ALIGNMENT, REMOTE_ADIV5_ADDR64, REMOTE_ADIV5_COUNT, 0 \
 	}
 /*
- * 3 leader bytes + 2 bytes for dev index + 16 bytes for the DP resource bus AP base address + 8 for CSW +
+ * 4 leader bytes + 2 bytes for dev index + 16 bytes for the DP resource bus AP base address + 8 for CSW +
  * 2 for the alignment + 16 for the address and 8 for the count and one trailer gives 57 bytes request overhead
  */
 #define REMOTE_ADIV6_MEM_WRITE_LENGTH 57U
