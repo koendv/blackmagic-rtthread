@@ -54,6 +54,12 @@ void remote_v0_jtag_reset(void)
 
 void remote_v0_jtag_tms_seq(uint32_t tms_states, size_t clock_cycles)
 {
+	// If too many clock cycles are requested, refuse
+	if (clock_cycles >= 256) {
+		DEBUG_ERROR("%s: Too many cycles requested - got %zu, max is 255\n", __func__, clock_cycles);
+		return;
+	}
+
 	char buffer[REMOTE_MAX_MSG_SIZE];
 	int length = snprintf(buffer, REMOTE_MAX_MSG_SIZE, REMOTE_JTAG_TMS_STR, clock_cycles, tms_states);
 	platform_buffer_write(buffer, length);
