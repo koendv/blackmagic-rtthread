@@ -50,7 +50,7 @@ uint32_t remote_v0_swd_seq_in(size_t clock_cycles)
 
 	length = platform_buffer_read(buffer, REMOTE_MAX_MSG_SIZE);
 	if (length < 2 || buffer[0] == REMOTE_RESP_ERR) {
-		DEBUG_ERROR("%s failed, error %s\n", __func__, length ? buffer + 1 : "short response");
+		DEBUG_ERROR("%s failed, error %s\n", __func__, length > 1 ? buffer + 1 : "short response");
 		exit(-1);
 	}
 	const uint32_t result = hex_string_to_num(-1, buffer + 1);
@@ -72,7 +72,7 @@ bool remote_v0_swd_seq_in_parity(uint32_t *result, size_t clock_cycles)
 
 	length = platform_buffer_read(buffer, REMOTE_MAX_MSG_SIZE);
 	if (length < 2 || buffer[0] == REMOTE_RESP_ERR) {
-		DEBUG_ERROR("%s failed, error %s\n", __func__, length ? buffer + 1 : "short response");
+		DEBUG_ERROR("%s failed, error %s\n", __func__, length > 1 ? buffer + 1 : "short response");
 		exit(-1);
 	}
 
@@ -97,7 +97,7 @@ void remote_v0_swd_seq_out(uint32_t value, size_t clock_cycles)
 
 	length = platform_buffer_read(buffer, REMOTE_MAX_MSG_SIZE);
 	if (length < 1 || buffer[0] == REMOTE_RESP_ERR) {
-		DEBUG_ERROR("%s failed, error %s\n", __func__, length ? buffer + 1 : "short response");
+		DEBUG_ERROR("%s failed, error %s\n", __func__, length > 1 ? buffer + 1 : "short response");
 		exit(-1);
 	}
 }
@@ -117,7 +117,7 @@ void remote_v0_swd_seq_out_parity(uint32_t value, size_t clock_cycles)
 
 	length = platform_buffer_read(buffer, REMOTE_MAX_MSG_SIZE);
 	if (length < 1 || buffer[1] == REMOTE_RESP_ERR) {
-		DEBUG_ERROR("%s failed, error %s\n", __func__, length ? buffer + 2 : "short response");
+		DEBUG_ERROR("%s failed, error %s\n", __func__, length > 1 ? buffer + 2 : "short response");
 		exit(-1);
 	}
 }

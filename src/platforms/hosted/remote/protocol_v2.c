@@ -63,7 +63,7 @@ bool remote_v2_jtag_init(void)
 	char buffer[REMOTE_MAX_MSG_SIZE];
 	const int length = platform_buffer_read(buffer, REMOTE_MAX_MSG_SIZE);
 	if (!length || buffer[0] == REMOTE_RESP_ERR) {
-		DEBUG_ERROR("remote_jtag_init failed, error %s\n", length ? buffer + 1 : "unknown");
+		DEBUG_ERROR("remote_jtag_init failed, error %s\n", length > 1 ? buffer + 1 : "unknown");
 		return false;
 	}
 
@@ -97,7 +97,7 @@ bool remote_v2_set_comms_frequency(const uint32_t freq)
 	length = platform_buffer_read(buffer, REMOTE_MAX_MSG_SIZE);
 	if (length < 1 || buffer[0] == REMOTE_RESP_ERR) {
 		DEBUG_ERROR("remote_set_comms_frequency: Failed to set SWD/JTAG clock frequency, error %s\n",
-			length ? buffer + 1 : "with communication");
+			length > 1 ? buffer + 1 : "with communication");
 		return false;
 	}
 	return true;
@@ -110,7 +110,8 @@ void remote_v2_target_clk_output_enable(const bool enable)
 	platform_buffer_write(buffer, length);
 	length = platform_buffer_read(buffer, REMOTE_MAX_MSG_SIZE);
 	if (length < 1 || buffer[0] == REMOTE_RESP_ERR)
-		DEBUG_ERROR("remote_target_clk_output_enable failed, error %s\n", length ? buffer + 1 : "with communication");
+		DEBUG_ERROR(
+			"remote_target_clk_output_enable failed, error %s\n", length > 1 ? buffer + 1 : "with communication");
 }
 
 static inline uint8_t bool_to_int(const bool value)
@@ -131,7 +132,7 @@ static void remote_v2_jtag_cycle(const bool tms, const bool tdi, const size_t cl
 
 	length = platform_buffer_read(buffer, REMOTE_MAX_MSG_SIZE);
 	if (!length || buffer[0] == REMOTE_RESP_ERR) {
-		DEBUG_ERROR("jtagtap_cycle failed, error %s\n", length ? buffer + 1 : "unknown");
+		DEBUG_ERROR("jtagtap_cycle failed, error %s\n", length > 1 ? buffer + 1 : "unknown");
 		exit(-1);
 	}
 }

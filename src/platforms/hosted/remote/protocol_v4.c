@@ -131,7 +131,7 @@ bool remote_v4_riscv_jtag_init(riscv_dmi_s *const dmi)
 	/* Read back the answer and check for errors */
 	length = platform_buffer_read(buffer, REMOTE_MAX_MSG_SIZE);
 	if (length < 1 || buffer[0U] != REMOTE_RESP_OK) {
-		DEBUG_ERROR("%s failed, error %s\n", __func__, length ? buffer + 1 : "with communication");
+		DEBUG_ERROR("%s failed, error %s\n", __func__, length > 1 ? buffer + 1 : "with communication");
 		return false;
 	}
 
@@ -182,7 +182,7 @@ void remote_v4_jtag_ensure_idle(adiv5_debug_port_s *dp)
 	/* Read back the answer and check for errors */
 	const int length = platform_buffer_read(buffer, REMOTE_MAX_MSG_SIZE);
 	if (length < 1 || buffer[0U] != REMOTE_RESP_OK) {
-		DEBUG_ERROR("%s failed, error %s\n", __func__, length ? buffer + 1 : "with communication");
+		DEBUG_ERROR("%s failed, error %s\n", __func__, length > 1 ? buffer + 1 : "with communication");
 		return;
 	}
 	jtag_devs[dp->dev_index].current_ir = 0xffU;
