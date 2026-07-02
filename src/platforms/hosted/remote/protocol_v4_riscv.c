@@ -1,7 +1,7 @@
 /*
  * This file is part of the Black Magic Debug project.
  *
- * Copyright (C) 2024 1BitSquared <info@1bitsquared.com>
+ * Copyright (C) 2024-2026 1BitSquared <info@1bitsquared.com>
  * Written by Rachel Mant <git@dragonmux.network>
  * All rights reserved.
  *
@@ -38,7 +38,7 @@
 #include "hex_utils.h"
 #include "exception.h"
 
-bool remote_v4_riscv_check_error(
+static bool remote_v4_riscv_check_error(
 	const char *const func, riscv_dmi_s *const dmi, const char *const buffer, const ssize_t length)
 {
 	/* Check the response length for error codes */
