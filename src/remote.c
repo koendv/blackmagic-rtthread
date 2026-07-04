@@ -139,6 +139,7 @@ static void remote_packet_process_swd(gdb_packet_s *const packet)
 			remote_dp.error = adiv5_swd_clear_error;
 			remote_dp.low_access = adiv5_swd_raw_access;
 			remote_dp.abort = adiv5_swd_abort;
+			remote_dp.ensure_idle = NULL;
 			swdptap_init();
 			remote_respond(REMOTE_RESP_OK, 0);
 		} else
