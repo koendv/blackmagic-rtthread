@@ -1383,8 +1383,10 @@ static bool stm32f1_cmd_option(target_s *const target, const int argc, const cha
 		/* Try and program the new option value to the requested option byte */
 		if (!stm32f1_option_write(target, addr, val))
 			return false;
-	} else
-		tc_printf(target, "usage: monitor option erase\nusage: monitor option <addr> <value>\n");
+	} else {
+		tc_printf(target, "usage: monitor option erase\n");
+		tc_printf(target, "usage: monitor option <addr> <value>\n");
+	}
 
 	/* Arterytek AT32F403A/F407 (and F413) have 24 option byte halfwords (48 bytes) */
 	const uint16_t ob_count = !strncmp(target->driver, "AT32F403A/407", 13) ? AT32F4_OB_COUNT : STM32F1_OB_COUNT;

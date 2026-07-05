@@ -741,8 +741,10 @@ static bool at32f43_cmd_option(target_s *const target, const int argc, const cha
 		const uint16_t val_new = target_mem32_read16(target, addr);
 		tc_printf(target, "0x%08" PRIX32 ": 0x%04X\n", addr, val_new);
 		return true;
-	} else
-		tc_printf(target, "usage: monitor option erase\nusage: monitor option <addr> <value>\n");
+	} else {
+		tc_printf(target, "usage: monitor option erase\n");
+		tc_printf(target, "usage: monitor option <addr> <value>\n");
+	}
 
 	/* When all gets said and done, display the current option bytes values */
 	const target_flash_s *target_flash = target->flash;
