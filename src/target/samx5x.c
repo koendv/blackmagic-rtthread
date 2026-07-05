@@ -772,7 +772,7 @@ static bool samx5x_cmd_set_bootprot(target_s *target, int argc, const char **arg
 	/* Conversion failures will return 0UL which is a valid value, so error-checking is not possible. */
 	uint32_t val = strtoul(argv[1], NULL, 0);
 	if (val > 15UL) {
-		tc_printf(target, "number must be between 0 and 15\n");
+		tc_printf(target, "number must be between 0 and %u\n", 15U);
 		return false;
 	}
 
