@@ -40,54 +40,6 @@
 #include "target.h"
 #include "target_internal.h"
 
-static bool samx5x_flash_erase(target_flash_s *flash, target_addr_t addr, size_t len);
-static bool samx5x_flash_write(target_flash_s *flash, target_addr_t dest, const void *src, size_t len);
-static bool samx5x_user_page_erase(target_flash_s *flash, target_addr_t addr, size_t len);
-static bool samx5x_user_page_write(target_flash_s *flash, target_addr_t dest, const void *src, size_t len);
-static bool samx5x_cmd_lock_flash(target_s *target, int argc, const char **argv);
-static bool samx5x_cmd_unlock_flash(target_s *target, int argc, const char **argv);
-static bool samx5x_cmd_set_bootprot(target_s *target, int argc, const char **argv);
-static bool samx5x_cmd_read_userpage(target_s *target, int argc, const char **argv);
-static bool samx5x_cmd_serial(target_s *target, int argc, const char **argv);
-static bool samx5x_cmd_ssb(target_s *target, int argc, const char **argv);
-static bool samx5x_cmd_update_user_word(target_s *target, int argc, const char **argv);
-
-/* (The SAM D1x/2x implementation of erase_all is reused as it's identical)*/
-extern bool samd_mass_erase(target_s *target, platform_timeout_s *print_progess);
-#define samx5x_mass_erase samd_mass_erase
-
-#ifdef SAMX5X_EXTRA_CMDS
-static bool samx5x_cmd_mbist(target_s *target, int argc, const char **argv);
-#endif
-
-static const command_s samx5x_cmd_list[] = {
-	{"lock_flash", samx5x_cmd_lock_flash, "Locks flash against spurious commands"},
-	{"unlock_flash", samx5x_cmd_unlock_flash, "Unlocks flash"},
-	{"set_bootprot", samx5x_cmd_set_bootprot,
-		"Reserves the first (15 - <bootprot>) 8 KiB pages for the bootloader: <bootprot>"},
-	{"user_page", samx5x_cmd_read_userpage, "Prints user page from flash"},
-	{"serial", samx5x_cmd_serial, "Prints serial number"},
-	{"set_security_bit", samx5x_cmd_ssb, "Sets the security bit"},
-	{"update_user_word", samx5x_cmd_update_user_word, "Sets 32-bits in the user page: <addr> <value>"},
-#ifdef SAMX5X_EXTRA_CMDS
-	{"mbist", samx5x_cmd_mbist, "Runs the built-in memory test"},
-#endif
-	{NULL, NULL, NULL},
-};
-
-/* clang-format off */
-static const uint8_t samx5x_user_page_factory_bits[] = {
-	/* 0      8     16     24     32     40     48     56 */
-	0x00U, 0x80U, 0xffU, 0xc3U, 0x00U, 0xffU, 0x00U, 0x80U,
-
-	/*64     72     80     88     96    104    112    120 */
-	0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
-
-	/*128   136    144    152 */
-	0xffU, 0xffU, 0xffU, 0xffU,
-};
-/* clang-format on */
-
 /* RAM Parameters */
 #define SAMX5X_RAM_START 0x20000000U
 
@@ -187,6 +139,53 @@ static const uint8_t samx5x_user_page_factory_bits[] = {
 #define SAMX5X_DID_SERIES_POS    16U
 
 #define ID_SAMX5X 0xcd0U
+
+static bool samx5x_cmd_lock_flash(target_s *target, int argc, const char **argv);
+static bool samx5x_cmd_unlock_flash(target_s *target, int argc, const char **argv);
+static bool samx5x_cmd_set_bootprot(target_s *target, int argc, const char **argv);
+static bool samx5x_cmd_read_userpage(target_s *target, int argc, const char **argv);
+static bool samx5x_cmd_serial(target_s *target, int argc, const char **argv);
+static bool samx5x_cmd_ssb(target_s *target, int argc, const char **argv);
+static bool samx5x_cmd_update_user_word(target_s *target, int argc, const char **argv);
+
+#ifdef SAMX5X_EXTRA_CMDS
+static bool samx5x_cmd_mbist(target_s *target, int argc, const char **argv);
+#endif
+
+static const command_s samx5x_cmd_list[] = {
+	{"lock_flash", samx5x_cmd_lock_flash, "Locks flash against spurious commands"},
+	{"unlock_flash", samx5x_cmd_unlock_flash, "Unlocks flash"},
+	{"set_bootprot", samx5x_cmd_set_bootprot,
+		"Reserves the first (15 - <bootprot>) 8 KiB pages for the bootloader: <bootprot>"},
+	{"user_page", samx5x_cmd_read_userpage, "Prints user page from flash"},
+	{"serial", samx5x_cmd_serial, "Prints serial number"},
+	{"set_security_bit", samx5x_cmd_ssb, "Sets the security bit"},
+	{"update_user_word", samx5x_cmd_update_user_word, "Sets 32-bits in the user page: <addr> <value>"},
+#ifdef SAMX5X_EXTRA_CMDS
+	{"mbist", samx5x_cmd_mbist, "Runs the built-in memory test"},
+#endif
+	{NULL, NULL, NULL},
+};
+
+static bool samx5x_flash_erase(target_flash_s *flash, target_addr_t addr, size_t len);
+static bool samx5x_flash_write(target_flash_s *flash, target_addr_t dest, const void *src, size_t len);
+static bool samx5x_user_page_erase(target_flash_s *flash, target_addr_t addr, size_t len);
+static bool samx5x_user_page_write(target_flash_s *flash, target_addr_t dest, const void *src, size_t len);
+
+/* (The SAM D1x/2x implementation of erase_all is reused as it's identical)*/
+extern bool samd_mass_erase(target_s *target, platform_timeout_s *print_progess);
+#define samx5x_mass_erase samd_mass_erase
+
+/* clang-format off */
+static const uint8_t samx5x_user_page_factory_bits[] = {
+	/* 0      8     16     24     32     40     48     56 */
+	0x00U, 0x80U, 0xffU, 0xc3U, 0x00U, 0xffU, 0x00U, 0x80U,
+	/*64     72     80     88     96    104    112    120 */
+	0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+	/*128   136    144    152 */
+	0xffU, 0xffU, 0xffU, 0xffU,
+};
+/* clang-format on */
 
 /*
  * Overloads the default cortexm reset function with a version that
