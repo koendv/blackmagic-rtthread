@@ -938,7 +938,7 @@ static bool samx5x_cmd_mbist(target_s *target, int argc, const char **argv)
 	/* Test the fail bit in Status A */
 	if (status & SAMX5X_STATUSA_FAIL) {
 		const uint32_t data = target_mem32_read32(target, SAMX5X_DSU_DATA);
-		tc_printf(target, "MBIST Fail @ 0x%08" PRIx32 " (bit %u in phase %u)\n",
+		tc_printf(target, "MBIST Fail @ 0x%08" PRIx32 " (bit %" PRIu32 " in phase %" PRIu32 ")\n",
 			target_mem32_read32(target, SAMX5X_DSU_ADDRESS), data & 0x1fU, data >> 8U);
 	} else
 		tc_printf(target, "MBIST Passed!\n");
