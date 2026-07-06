@@ -161,7 +161,7 @@ target_riscv = declare_dependency(
 		'riscv_debug.c',
 		'riscv_adi_dtm.c',
 	),
-	compile_args: ['-DCONFIG_RISCV=1'],
+	compile_args: ['-DCONFIG_RISCV=1', '-DCONFIG_RISCV_ACCEL=1'],
 	dependencies: riscv_jtag_dtm,
 )
 
