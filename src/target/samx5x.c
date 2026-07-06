@@ -58,9 +58,6 @@ extern bool samd_mass_erase(target_s *target, platform_timeout_s *print_progess)
 
 #ifdef SAMX5X_EXTRA_CMDS
 static bool samx5x_cmd_mbist(target_s *target, int argc, const char **argv);
-static bool samx5x_cmd_write8(target_s *target, int argc, const char **argv);
-static bool samx5x_cmd_write16(target_s *target, int argc, const char **argv);
-static bool samx5x_cmd_write32(target_s *target, int argc, const char **argv);
 #endif
 
 static const command_s samx5x_cmd_list[] = {
@@ -74,9 +71,6 @@ static const command_s samx5x_cmd_list[] = {
 	{"update_user_word", samx5x_cmd_update_user_word, "Sets 32-bits in the user page: <addr> <value>"},
 #ifdef SAMX5X_EXTRA_CMDS
 	{"mbist", samx5x_cmd_mbist, "Runs the built-in memory test"},
-	{"write8", samx5x_cmd_write8, "Writes an 8-bit word: write8 <addr> <value>"},
-	{"write16", samx5x_cmd_write16, "Writes a 16-bit word: write16 <addr> <value>"},
-	{"write32", samx5x_cmd_write32, "Writes a 32-bit word: write32 <addr> <value>"},
 #endif
 	{NULL, NULL, NULL},
 };
@@ -894,7 +888,7 @@ static bool samx5x_cmd_update_user_word(target_s *target, int argc, const char *
 static uint32_t samx5x_ram_size(target_s *target)
 {
 	/* Read the Device ID */
-	const uint32_t did = target_mem_read32(target, SAMX5X_DSU_DID);
+	const uint32_t did = target_mem32_read32(target, SAMX5X_DSU_DID);
 	/* Mask off the device select bits */
 	const samx5x_descr_s samx5x = samx5x_parse_device_id(did);
 	/* Adjust the maximum ram size (256KB) down as appropriate */
@@ -918,19 +912,19 @@ static bool samx5x_cmd_mbist(target_s *target, int argc, const char **argv)
 	 * Similarly, the length must also be left shifted by 2 as the
 	 * two least significant bits of that register are unused
 	 */
-	target_mem_write32(target, SAMX5X_DSU_ADDRESS, SAMX5X_RAM_START);
-	target_mem_write32(target, SAMX5X_DSU_LENGTH, samx5x_ram_size(target) << 2U);
+	target_mem32_write32(target, SAMX5X_DSU_ADDRESS, SAMX5X_RAM_START);
+	target_mem32_write32(target, SAMX5X_DSU_LENGTH, samx5x_ram_size(target) << 2U);
 
 	/* Clear the fail and protection error bits */
-	target_mem_write32(target, SAMX5X_DSU_CTRLSTAT, SAMX5X_STATUSA_FAIL | SAMX5X_STATUSA_PERR);
+	target_mem32_write32(target, SAMX5X_DSU_CTRLSTAT, SAMX5X_STATUSA_FAIL | SAMX5X_STATUSA_PERR);
 
 	/* Write the MBIST command */
-	target_mem_write32(target, SAMX5X_DSU_CTRLSTAT, SAMX5X_CTRL_MBIST);
+	target_mem32_write32(target, SAMX5X_DSU_CTRLSTAT, SAMX5X_CTRL_MBIST);
 
 	/* Poll for DSU Ready */
 	uint32_t status = 0;
 	while ((status & (SAMX5X_STATUSA_DONE | SAMX5X_STATUSA_PERR | SAMX5X_STATUSA_FAIL)) == 0U) {
-		status = target_mem_read32(target, SAMX5X_DSU_CTRLSTAT);
+		status = target_mem32_read32(target, SAMX5X_DSU_CTRLSTAT);
 		if (target_check_error(target))
 			return false;
 	}
@@ -943,94 +937,12 @@ static bool samx5x_cmd_mbist(target_s *target, int argc, const char **argv)
 
 	/* Test the fail bit in Status A */
 	if (status & SAMX5X_STATUSA_FAIL) {
-		const uint32_t data = target_mem_read32(target, SAMX5X_DSU_DATA);
+		const uint32_t data = target_mem32_read32(target, SAMX5X_DSU_DATA);
 		tc_printf(target, "MBIST Fail @ 0x%08" PRIx32 " (bit %u in phase %u)\n",
-			target_mem_read32(target, SAMX5X_DSU_ADDRESS), data & 0x1fU, data >> 8U);
+			target_mem32_read32(target, SAMX5X_DSU_ADDRESS), data & 0x1fU, data >> 8U);
 	} else
 		tc_printf(target, "MBIST Passed!\n");
 
-	return true;
-}
-
-/* Writes an 8-bit word to the specified address */
-static bool samx5x_cmd_write8(target_s *target, int argc, const char **argv)
-{
-	if (argc != 3) {
-		tc_printf(target, "Error: incorrect number of arguments\n");
-		return false;
-	}
-
-	char *addr_end = NULL;
-	uint32_t addr = strtoul(argv[1], &addr_end, 0);
-	char *value_end = NULL;
-	uint32_t value = strtoul(argv[2], &value_end, 0);
-
-	if (addr_end == argv[1] || (!addr && *(addr_end - 1U) != '0') || value_end == argv[2] ||
-		(!value && *(value_end - 1U) != '0')) {
-		tc_printf(target, "Error: unrecognized arguments\n");
-		return false;
-	}
-
-	if (value > 0xffU) {
-		tc_printf(target, "Error: value out of range\n");
-		return false;
-	}
-
-	DEBUG_INFO("Writing 8-bit value 0x%02" PRIx32 " at address 0x%08" PRIx32 "\n", value, addr);
-	target_mem32_write8(target, addr, (uint8_t)value);
-	return true;
-}
-
-/* Writes a 16-bit word to the specified address */
-static bool samx5x_cmd_write16(target_s *target, int argc, const char **argv)
-{
-	if (argc != 3) {
-		tc_printf(target, "Error: incorrect number of arguments\n");
-		return false;
-	}
-
-	char *addr_end = NULL;
-	uint32_t addr = strtoul(argv[1], &addr_end, 0);
-	char *value_end = NULL;
-	uint32_t value = strtoul(argv[2], &value_end, 0);
-
-	if (addr_end == argv[1] || (!addr && *(addr_end - 1U) != '0') || value_end == argv[2] ||
-		(!value && *(value_end - 1U) != '0')) {
-		tc_printf(target, "Error: unrecognized arguments\n");
-		return false;
-	}
-
-	if (value > 0xffffU) {
-		tc_printf(target, "Error: value out of range\n");
-		return false;
-	}
-
-	DEBUG_INFO("Writing 16-bit value 0x%04" PRIx32 " at address 0x%08" PRIx32 "\n", value, addr);
-	target_mem32_write16(target, addr, (uint16_t)value);
-	return true;
-}
-
-/* Writes a 32-bit word to the specified address */
-static bool samx5x_cmd_write32(target_s *target, int argc, const char **argv)
-{
-	if (argc != 3) {
-		tc_printf(target, "Error: incorrect number of arguments\n");
-		return false;
-	}
-
-	char *addr_end = NULL;
-	uint32_t addr = strtoul(argv[1], &addr_end, 0);
-	char *value_end = NULL;
-	uint32_t value = strtoul(argv[2], &value_end, 0);
-
-	if (addr_end == argv[1] || (!addr && *(addr_end - 1U) != '0') || value_end == argv[2] ||
-		(!value && *(value_end - 1U) != '0')) {
-		tc_printf(target, "Error: unrecognized arguments\n");
-		return false;
-	}
-
-	DEBUG_INFO("Writing 32-bit value 0x%08" PRIx32 " at address 0x%08" PRIx32 "\n", value, addr);
-	target_mem_write32(target, addr, value);
 	return true;
 }
 #endif
