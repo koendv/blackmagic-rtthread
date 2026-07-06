@@ -1,7 +1,7 @@
 /*
  * This file is part of the Black Magic Debug project.
  *
- * Copyright (C) 2023-2025 1BitSquared <info@1bitsquared.com>
+ * Copyright (C) 2023-2026 1BitSquared <info@1bitsquared.com>
  * Written by Rachel Mant <git@dragonmux.network>
  * All rights reserved.
  *
@@ -189,7 +189,7 @@ typedef struct stm32h5_flash {
 static bool stm32h5_cmd_uid(target_s *target, int argc, const char **argv);
 static bool stm32h5_cmd_rev(target_s *target, int argc, const char **argv);
 
-const command_s stm32h5_cmd_list[] = {
+static const command_s stm32h5_cmd_list[] = {
 	{"uid", stm32h5_cmd_uid, "Print unique device ID"},
 	{"revision", stm32h5_cmd_rev, "Returns the Device ID and Revision"},
 	{NULL, NULL, NULL},
