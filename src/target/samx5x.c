@@ -892,7 +892,7 @@ static uint32_t samx5x_ram_size(target_s *target)
 	/* Mask off the device select bits */
 	const samx5x_descr_s samx5x = samx5x_parse_device_id(did);
 	/* Adjust the maximum ram size (256KB) down as appropriate */
-	return (0x40000U - 0x10000U * (20U - samx5x.mem));
+	return 0x40000U - (0x10000U * (20U - samx5x.mem));
 }
 
 /* Runs the Memory Built In Self Test (MBIST) */
