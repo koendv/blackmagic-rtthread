@@ -23,7 +23,8 @@
 #include "gdb_if.h"
 
 #if !defined(STM32F0) && !defined(STM32F1) && !defined(STM32F2) && !defined(STM32F3) && !defined(STM32F4) && \
-	!defined(STM32F7) && !defined(STM32L0) && !defined(STM32L1) && !defined(STM32G0) && !defined(STM32G4)
+	!defined(STM32F7) && !defined(STM32L0) && !defined(STM32L1) && !defined(STM32G0) && !defined(STM32G4) && \
+	!defined(STM32U5)
 #define GENERIC_CRC32_IMPL
 #endif
 
