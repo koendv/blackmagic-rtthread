@@ -1,76 +1,38 @@
 /*
- * This file is part of the Black Magic Debug project.
- *
- * Copyright (C) 2012-2020 Black Sphere Technologies Ltd.
- * Copyright (C) 2022-2024 1BitSquared <info@1bitsquared.com>
- * Written by Rachel Mant <git@dragonmux.network>
- * Contains source and ideas from Gareth McMullin <gareth@blacksphere.co.nz>
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- */
-
-/*
- * This file implements support for the ARM-defined semihosting interface for
- * target to debugger service syscalls
- *
- * References:
- * DUI0471 - ARM Compiler Software DEvelopment Guide Version 5.06 (semihosting v1)
- *   https://developer.arm.com/documentation/dui0471/m/what-is-semihosting-
- * ARM Architecture ABI: Semihosting v2
- *   https://developer.arm.com/documentation/100863/latest/ ->
- *   https://github.com/ARM-software/abi-aa/blob/main/semihosting/semihosting.rst
- *
- * This implementation uses GDB's File I/O upcalls in the firmware and for stdio
- * to implement the semihosted syscall utilities, and uses native syscalls otherwise
- * when built as BMDA.
- *
- * Additionally we simulate two special files - :tt for the stdio facilities, and
- * :semihosting-features so the firmware can determine what Semihosting v2 extensions
- * this implementation supports. More on this latter part is noted below.
+ * semihosting spec: https://github.com/ARM-software/abi-aa/blob/main/semihosting/semihosting.rst
  */
 
 #include "general.h"
 #include "target.h"
 #include "target_internal.h"
-#include "gdb_main.h"
-#include "gdb_packet.h"
-#include "hex_utils.h"
 #include "semihosting.h"
 #include "semihosting_internal.h"
-#include "buffer_utils.h"
-#include "timeofday.h"
 
-#include <string.h>
-#include <stdio.h>
-#include <stdlib.h>
+#include <rtthread.h>
+#define DBG_TAG "SEMI"
+#define DBG_LVL DBG_INFO
+//#define DBG_LVL DBG_DBG
+#include <rtdbg.h>
 
-#if CONFIG_BMDA == 1
-#include <errno.h>
-#include <time.h>
+#include <dfs_file.h>
+#include <unistd.h>
+#include <stdio.h> /* rename() */
 #include <sys/stat.h>
-#include <fcntl.h>
-#ifdef _WIN32
-#include <io.h>
-#define O_BINARY _O_BINARY
-#define O_NOCTTY 0
-#else
-#define O_BINARY 0
-#endif
-#endif
+#include <msh.h>
+
+#include "settings.h"
+#include "serials.h"
+#include "usb_cdc0.h"
+
+#define STDIN_FILENO  0 /* standard input file descriptor */
+#define STDOUT_FILENO 1 /* standard output file descriptor */
+#define STDERR_FILENO 2 /* standard error file descriptor */
+
+#define FEATURE_FILENO (INT32_MAX - 1)
 
 /* This stores the current SYS_CLOCK epoch relative to the values from SYS_TIME */
 uint32_t semihosting_wallclock_epoch = UINT32_MAX;
+
 /* This stores the current :semihosting-features "file" access offset */
 static uint8_t semihosting_features_offset = 0U;
 
@@ -84,187 +46,102 @@ static uint8_t semihosting_features_offset = 0U;
 #define SEMIHOSTING_FEATURES_LENGTH 5U
 static const char semihosting_features[SEMIHOSTING_FEATURES_LENGTH] = {'S', 'H', 'F', 'B', '\x03'};
 
-static const char semihosting_tempname_template[] = "tempAA.tmp";
+static const char semihosting_tempname_template[] = "/sdcard/tempAA.tmp";
 #define SEMIHOSTING_TEMPNAME_LENGTH ARRAY_LENGTH(semihosting_tempname_template)
 
-#if ENABLE_DEBUG == 1
+#define SEMIHOSTING_PATH_MAX 64U
+
+/* relative file names are placed on the sdcard */
+#define SEMIHOSTING_FILE_PREFIX     "/sdcard/"
+#define SEMIHOSTING_FILE_PREFIX_LEN (sizeof(SEMIHOSTING_FILE_PREFIX) - 1U)
+
+/* semihosting_opened_fds is 32 bit */
+#define SEMIHOSTING_MAX_FD 31U
+
+/* returned by SYS_READC */
+#define SEMIHOSTING_READC_EOF ((int32_t) - 1)
+
+/* returned when the semihosting spec says 'undefined' */
+#define SEMIHOSTING_UNDEFINED (0xDEADBEEF)
+
+/* strings for debug output */
 const char *const semihosting_names[] = {
-	"",
-	"SYS_OPEN",
-	"SYS_CLOSE",
-	"SYS_WRITEC",
-	"SYS_WRITE0",
-	"SYS_WRITE",
-	"SYS_READ",
-	"SYS_READC",
-	"SYS_ISERROR",
-	"SYS_ISTTY",
-	"SYS_SEEK",
-	"0x0b",
-	"SYS_FLEN",
-	"SYS_TMPNAM",
-	"SYS_REMOVE",
-	"SYS_RENAME",
-	"SYS_CLOCK",
-	"SYS_TIME",
-	"SYS_SYSTEM",
-	"SYS_ERRNO",
-	"0x14",
-	"SYS_GET_CMDLINE",
-	"SYS_HEAPINFO",
-	"0x17",
+	[SEMIHOSTING_SYS_OPEN] = "SYS_OPEN",
+	[SEMIHOSTING_SYS_CLOSE] = "SYS_CLOSE",
+	[SEMIHOSTING_SYS_WRITEC] = "SYS_WRITEC",
+	[SEMIHOSTING_SYS_WRITE0] = "SYS_WRITE0",
+	[SEMIHOSTING_SYS_WRITE] = "SYS_WRITE",
+	[SEMIHOSTING_SYS_READ] = "SYS_READ",
+	[SEMIHOSTING_SYS_READC] = "SYS_READC",
+	[SEMIHOSTING_SYS_ISERROR] = "SYS_ISERROR",
+	[SEMIHOSTING_SYS_ISTTY] = "SYS_ISTTY",
+	[SEMIHOSTING_SYS_SEEK] = "SYS_SEEK",
+	[SEMIHOSTING_SYS_FLEN] = "SYS_FLEN",
+	[SEMIHOSTING_SYS_TMPNAM] = "SYS_TMPNAM",
+	[SEMIHOSTING_SYS_REMOVE] = "SYS_REMOVE",
+	[SEMIHOSTING_SYS_RENAME] = "SYS_RENAME",
+	[SEMIHOSTING_SYS_CLOCK] = "SYS_CLOCK",
+	[SEMIHOSTING_SYS_TIME] = "SYS_TIME",
+	[SEMIHOSTING_SYS_SYSTEM] = "SYS_SYSTEM",
+	[SEMIHOSTING_SYS_ERRNO] = "SYS_ERRNO",
+	[SEMIHOSTING_SYS_GET_CMDLINE] = "SYS_GET_CMDLINE",
+	[SEMIHOSTING_SYS_HEAPINFO] = "SYS_HEAPINFO",
 	[SEMIHOSTING_SYS_EXIT] = "SYS_EXIT",
-	/* 7 reserved */
 	[SEMIHOSTING_SYS_EXIT_EXTENDED] = "SYS_EXIT_EXTENDED",
-	/* 15 reserved */
 	[SEMIHOSTING_SYS_ELAPSED] = "SYS_ELAPSED",
 	[SEMIHOSTING_SYS_TICKFREQ] = "SYS_TICKFREQ",
-	"",
 };
-#endif
 
-#if CONFIG_BMDA == 1
-static semihosting_errno_e semihosting_errno(void);
-#endif
+/* bitmask of all opened file descriptors */
+static uint32_t semihosting_opened_fds = 0U;
 
-int32_t semihosting_reply(target_controller_s *const tc, const char *const pbuf)
+/* true if file was opened by semihosting */
+static bool is_semihosting_fd(uint32_t fd)
 {
-	/*
-	 * File-I/O Remote Protocol Extension
-	 * See https://sourceware.org/gdb/onlinedocs/gdb/Protocol-Basics.html#Protocol-Basics
-	 *
-	 * This handles the F Reply Packet, sent by GDB after handling the File-I/O Request Packet.
-	 *
-	 * The F reply packet consists of the following:
-	 *
-	 * - retcode, the return code of the system call as hexadecimal value.
-	 * - errno, the errno set by the call, in protocol-specific representation.
-	 * 		Can be omitted if the call was successful.
-	 * - Ctrl-C flag, sent only if user requested a break.
-	 * 		In this case, errno must be sent as well, even if the call was successful.
-	 * 		The Ctrl-C flag itself consists of the character ‘C’:
-	 */
-
-	uint32_t retcode = 0;
-	uint32_t gdb_errno = 0;
-	const char *rest = NULL;
-
-	/* This function will handle '-' preceding the return code and correctly negate the result. */
-	if (!read_hex32(pbuf, &rest, &retcode, READ_HEX_NO_FOLLOW)) {
-		/*
-		 * There is no retcode in the packet, so what do?
-		 * FIXME: how do we properly handle this?
-		 */
-		tc->interrupted = false;
-		tc->gdb_errno = TARGET_EUNKNOWN;
-		return -1;
-	}
-
-	tc->gdb_errno = TARGET_SUCCESS;
-
-	/* If the call was successful the errno may be omitted */
-	if (rest[0] == ',' && read_hex32(rest + 1, &rest, &gdb_errno, READ_HEX_NO_FOLLOW)) {
-		tc->gdb_errno = gdb_errno;
-		/* If break is requested */
-		if (rest[0] == ',')
-			tc->interrupted = rest[1] == 'C';
-	}
-
-	return retcode;
+	return (fd < SEMIHOSTING_MAX_FD) && ((semihosting_opened_fds & (0x1 << fd)) != 0);
 }
 
-static int32_t semihosting_get_gdb_response(target_controller_s *const tc)
+/* read filename from target memory */
+static bool semihosting_read_path(
+	target_s *const target, const target_addr_t path_taddr, const uint32_t path_length, char *const path)
 {
-	/* Still have to service normal 'X'/'m'-packets */
-	while (true) {
-		/* Get back the next packet to process and have the main loop handle it */
-		const gdb_packet_s *const packet = gdb_packet_receive();
-		/* If this was an escape packet (or gdb_if reports link closed), fail the call */
-		if (packet->size == 1U && packet->data[0] == '\x04')
-			return -1;
-		/*
-		 * If this was an F-packet, we are done waiting.
-		 * Check before gdb_main_loop as it may clobber the packet buffer.
-		 */
-		const bool done = packet->data[0] == 'F';
-		const int32_t result = gdb_main_loop(tc, packet, true);
-		if (done)
-			return result;
+	if (path_taddr == TARGET_NULL) {
+		LOG_E("path: null pointer");
+		target->tc->gdb_errno = TARGET_EINVAL;
+		return false;
 	}
-}
-
-/* Interface to host system calls */
-static int32_t semihosting_remote_read(
-	target_s *const target, const int32_t fd, const target_addr_t buf_taddr, const uint32_t count)
-{
-#if CONFIG_BMDA == 1
-	if ((target->stdout_redirected && fd == STDIN_FILENO) || fd > STDERR_FILENO) {
-		uint8_t *const buf = malloc(count);
-		if (buf == NULL)
-			return -1;
-		const ssize_t result = read(fd, buf, count);
-		target->tc->gdb_errno = semihosting_errno();
-		target_mem32_write(target, buf_taddr, buf, count);
-		free(buf);
-		if (target_check_error(target))
-			return -1;
-		return result;
+	if (path_length == 0U) {
+		LOG_E("path: length 0");
+		target->tc->gdb_errno = TARGET_EINVAL;
+		return false;
 	}
-#endif
-	gdb_putpacket_str_f("Fread,%08X,%08" PRIX32 ",%08" PRIX32, (unsigned)fd, buf_taddr, count);
-	return semihosting_get_gdb_response(target->tc);
-}
+	if (path_length >= SEMIHOSTING_PATH_MAX) {
+		LOG_E("path: too long");
+		target->tc->gdb_errno = TARGET_ENAMETOOLONG;
+		return false;
+	}
+	target_mem32_read(target, path, path_taddr, path_length);
+	if (target_check_error(target)) {
+		LOG_E("path: memory read error");
+		target->tc->gdb_errno = TARGET_EFAULT;
+		return false;
+	}
+	path[path_length] = '\0';
 
-/* Interface to host system calls */
-static int32_t semihosting_remote_write(
-	target_s *const target, const int32_t fd, const target_addr_t buf_taddr, const uint32_t count)
-{
-#if CONFIG_BMDA == 1
-	if (fd > STDERR_FILENO) {
-		uint8_t *const buf = malloc(count);
-		if (buf == NULL)
-			return -1;
-		target_mem32_read(target, buf, buf_taddr, count);
-		if (target_check_error(target)) {
-			free(buf);
-			return -1;
+	if (path[0] != '/' && path[0] != ':') {
+		if (path_length + SEMIHOSTING_FILE_PREFIX_LEN >= SEMIHOSTING_PATH_MAX) {
+			LOG_E("path: too long");
+			target->tc->gdb_errno = TARGET_ENAMETOOLONG;
+			return false;
 		}
-		const int32_t result = write(fd, buf, count);
-		target->tc->gdb_errno = semihosting_errno();
-		free(buf);
-		return result;
-	}
-#endif
-
-	if (target->stdout_redirected && (fd == STDOUT_FILENO || fd == STDERR_FILENO)) {
-		uint8_t buffer[STDOUT_READ_BUF_SIZE];
-		for (size_t offset = 0; offset < count; offset += STDOUT_READ_BUF_SIZE) {
-			const size_t amount = MIN(count - offset, STDOUT_READ_BUF_SIZE);
-			target_mem32_read(target, buffer, buf_taddr, amount);
-#if CONFIG_BMDA == 0
-			debug_serial_send_stdout(buffer, amount);
-#else
-			const ssize_t result = write(fd, buffer, amount);
-			if (result == -1) {
-				target->tc->gdb_errno = semihosting_errno();
-				return offset;
-			}
-#endif
-		}
-		return (int32_t)count;
+		memmove(path + SEMIHOSTING_FILE_PREFIX_LEN, path, path_length + 1U);
+		memcpy(path, SEMIHOSTING_FILE_PREFIX, SEMIHOSTING_FILE_PREFIX_LEN);
 	}
 
-	gdb_putpacket_str_f("Fwrite,%08X,%08" PRIX32 ",%08" PRIX32, (unsigned)fd, buf_taddr, count);
-	return semihosting_get_gdb_response(target->tc);
+	return true;
 }
 
-#if CONFIG_BMDA == 1
-/*
- * Convert an errno value from a syscall into its GDB-compat target errno equivalent
- *
- * NB: Must be called immediately after the syscall that might generate a value.
- * No functions or actions may be performed between these two points.
- */
+/* convert rt-thread errno in gdb file i/o errno for SYS_ERRNO */
 static semihosting_errno_e semihosting_errno(void)
 {
 	const int32_t error = errno;
@@ -290,6 +167,7 @@ static semihosting_errno_e semihosting_errno(void)
 	case EEXIST:
 		return TARGET_EEXIST;
 	case ENODEV:
+	case ENXIO:
 		return TARGET_ENODEV;
 	case ENOTDIR:
 		return TARGET_ENOTDIR;
@@ -303,6 +181,8 @@ static semihosting_errno_e semihosting_errno(void)
 		return TARGET_EMFILE;
 	case EFBIG:
 		return TARGET_EFBIG;
+	case ENOSPC:
+		return TARGET_ENOSPC;
 	case ESPIPE:
 		return TARGET_ESPIPE;
 	case EROFS:
@@ -311,84 +191,24 @@ static semihosting_errno_e semihosting_errno(void)
 		return TARGET_ENOSYS;
 	case ENAMETOOLONG:
 		return TARGET_ENAMETOOLONG;
+	default:
+		return TARGET_EUNKNOWN;
 	}
-	return TARGET_EUNKNOWN;
 }
-
-const char *semihosting_read_string(
-	target_s *const target, const target_addr_t string_taddr, const uint32_t string_length)
-{
-	if (string_taddr == TARGET_NULL || string_length == 0)
-		return NULL;
-	char *string = malloc(string_length + 1U);
-	if (string == NULL)
-		return NULL;
-	target_mem32_read(target, string, string_taddr, string_length + 1U);
-	if (target_check_error(target)) {
-		free(string);
-		return NULL;
-	}
-	string[string_length] = '\0';
-	return string;
-}
-#endif
 
 int32_t semihosting_open(target_s *const target, const semihosting_s *const request)
 {
 	const target_addr_t file_name_taddr = request->params[0];
+	const int32_t open_mode_raw = request->params[1];
 	const uint32_t file_name_length = request->params[2];
 
-	/*
-	 * Translation table of fopen() modes to GDB-compatible open flags
-	 * See DUI0471C, Table 8-3
-	 */
-	static const uint16_t open_mode_flags[] = {
-		OPEN_MODE_RDONLY,                                      /* r, rb */
-		OPEN_MODE_RDWR,                                        /* r+, r+b */
-		OPEN_MODE_WRONLY | OPEN_MODE_CREAT | OPEN_MODE_TRUNC,  /* w, wb */
-		OPEN_MODE_RDWR | OPEN_MODE_CREAT | OPEN_MODE_TRUNC,    /* w+, w+b */
-		OPEN_MODE_WRONLY | OPEN_MODE_CREAT | OPEN_MODE_APPEND, /* a, ab */
-		OPEN_MODE_RDWR | OPEN_MODE_CREAT | OPEN_MODE_APPEND,   /* a+, a+b */
-	};
-	const uint32_t open_mode = open_mode_flags[request->params[1] >> 1U];
-
-	if (file_name_length <= 4U) {
-		char file_name[4U];
-		target_mem32_read(target, file_name, file_name_taddr, file_name_length + 1U);
-
-		/* Handle requests for console I/O */
-		if (!strncmp(file_name, ":tt", 4U)) {
-			int32_t result = -1;
-			if (open_mode == OPEN_MODE_RDONLY)
-				result = STDIN_FILENO;
-			else if (open_mode & OPEN_MODE_TRUNC)
-				result = STDOUT_FILENO;
-			else
-				result = STDERR_FILENO;
-			return result + 1;
-		}
-	} else if (file_name_length <= 22U) {
-		char file_name[22U];
-		target_mem32_read(target, file_name, file_name_taddr, file_name_length + 1U);
-
-		/* Handle a request for the features "file" */
-		if (!strncmp(file_name, ":semihosting-features", 22U)) {
-			/* Only let the firmware "open" the file if they ask for it in read-only mode */
-			if (open_mode == OPEN_MODE_RDONLY) {
-				semihosting_features_offset = 0U;
-				return INT32_MAX;
-			}
-			return -1;
-		}
+	if (open_mode_raw > 11U) {
+		LOG_E("open: invalid mode %d", open_mode_raw);
+		target->tc->gdb_errno = TARGET_EINVAL;
+		return -1;
 	}
 
-#if CONFIG_BMDA == 1
-	const char *const file_name = semihosting_read_string(target, file_name_taddr, file_name_length);
-	if (file_name == NULL)
-		return -1;
-
-	/* Translation table of fopen() modes to libc-native open() mode flags */
-	static const int32_t native_open_mode_flags[] = {
+	static const int32_t open_mode_flags[] = {
 		O_RDONLY,                      /* r, rb */
 		O_RDWR,                        /* r+, r+b */
 		O_WRONLY | O_CREAT | O_TRUNC,  /* w, wb */
@@ -396,423 +216,569 @@ int32_t semihosting_open(target_s *const target, const semihosting_s *const requ
 		O_WRONLY | O_CREAT | O_APPEND, /* a, ab */
 		O_RDWR | O_CREAT | O_APPEND,   /* a+, a+b */
 	};
-	int32_t native_open_mode = native_open_mode_flags[request->params[1] >> 1U];
-	if (request->params[1] & 1U)
-		native_open_mode |= O_BINARY;
 
-	const int32_t result = open(file_name, native_open_mode | O_NOCTTY, 0644);
-	target->tc->gdb_errno = semihosting_errno();
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wcast-qual"
-	free((void *)file_name);
-#pragma GCC diagnostic pop
-#else
-	gdb_putpacket_str_f("Fopen,%08" PRIX32 "/%08" PRIX32 ",%08" PRIX32 ",%08X", file_name_taddr, file_name_length + 1U,
-		open_mode, 0644U);
-	const int32_t result = semihosting_get_gdb_response(target->tc);
-#endif
-	if (result != -1)
+	const int32_t open_mode = open_mode_flags[open_mode_raw >> 1U];
+	char file_name[SEMIHOSTING_PATH_MAX + 1] = {0};
+
+	if (!semihosting_read_path(target, file_name_taddr, file_name_length, file_name)) {
+		LOG_E("open: file name read error");
+		return -1;
+	}
+
+	/* console i/o */
+	if (!strncmp(file_name, ":tt", 4U)) {
+		int32_t result = -1;
+		if (open_mode == O_RDONLY)
+			result = STDIN_FILENO;
+		else if (open_mode & O_TRUNC)
+			result = STDOUT_FILENO;
+		else
+			result = STDERR_FILENO;
 		return result + 1;
-	return result;
+	}
+
+	/* known limitation: one access to ":semihosting-features" at a time */
+	if (!strncmp(file_name, ":semihosting-features", 22U)) {
+		/* only let the firmware open features in read-only mode */
+		if (open_mode == O_RDONLY) {
+			semihosting_features_offset = 0U;
+			return FEATURE_FILENO + 1;
+		}
+		LOG_E("open: :semihosting-features is read only");
+		target->tc->gdb_errno = TARGET_EINVAL;
+		return -1;
+	}
+
+	/* a real file */
+	if (!settings.fileio_enable) {
+		LOG_E("open: '%s' file i/o disabled in settings", file_name);
+		target->tc->gdb_errno = TARGET_EACCES;
+		return -1;
+	}
+
+	const int32_t fd = open(file_name, open_mode);
+
+	if (fd < 0) {
+		LOG_E("open: '%s' fail", file_name);
+		target->tc->gdb_errno = semihosting_errno();
+		return -1;
+	}
+
+	if (fd >= SEMIHOSTING_MAX_FD) {
+		/* can't track */
+		LOG_E("open: '%s' too many open files", file_name);
+		close(fd);
+		target->tc->gdb_errno = TARGET_EMFILE;
+		return -1;
+	}
+
+	semihosting_opened_fds |= 0x1 << fd;
+	LOG_I("open: '%s' fd %" PRId32, file_name, fd);
+
+	return fd + 1;
 }
 
 int32_t semihosting_close(target_s *const target, const semihosting_s *const request)
 {
 	const int32_t fd = request->params[0] - 1;
-	/*
-	 * If the file descriptor requested is one of the special ones from ":tt" operations,
-	 * or from "":semihosting-features", do nothing
-	 */
-	if (fd == STDIN_FILENO || fd == STDOUT_FILENO || fd == STDERR_FILENO || request->params[0] == INT32_MAX)
+
+	if (fd == STDIN_FILENO || fd == STDOUT_FILENO || fd == STDERR_FILENO || fd == FEATURE_FILENO)
 		return 0;
-		/* Otherwise close the descriptor returned by semihosting_open() */
-#if CONFIG_BMDA == 1
-	const int32_t result = close(fd);
-	target->tc->gdb_errno = semihosting_errno();
-	return result;
-#else
-	gdb_putpacket_str_f("Fclose,%08X", (unsigned)fd);
-	return semihosting_get_gdb_response(target->tc);
-#endif
-}
 
-int32_t semihosting_read(target_s *const target, const semihosting_s *const request)
-{
-	const target_addr_t buf_taddr = request->params[1];
-	const uint32_t buf_len = request->params[2];
-#if CONFIG_BMDA == 1
-	if (buf_len == 0)
-		return 0;
-#endif
-
-	/* Check if this is a request to read from the :semihosting-features "file" */
-	if (request->params[0] == INT32_MAX) {
-		/* Clamp the requested amount to the amount we actually have left */
-		const uint32_t amount = MIN(buf_len, SEMIHOSTING_FEATURES_LENGTH - semihosting_features_offset);
-		/* Copy the chunk requested to the target, updating our internal offset */
-		target_mem32_write(target, buf_taddr, semihosting_features + semihosting_features_offset, amount);
-		semihosting_features_offset += amount;
-		/* Return how much was left from what we transferred */
-		return (int32_t)(buf_len - amount);
-	}
-
-	const int32_t fd = request->params[0] - 1;
-	const int32_t result = semihosting_remote_read(target, fd, buf_taddr, buf_len);
-	if (result >= 0)
-		return (int32_t)(buf_len - result);
-	return result;
-}
-
-int32_t semihosting_write(target_s *const target, const semihosting_s *const request)
-{
-	/* Write requests to the :semihosting-features "file" always fail */
-	if (request->params[0] == INT32_MAX)
+	if (!is_semihosting_fd(fd))
 		return -1;
 
-	const int32_t fd = request->params[0] - 1;
-	const target_addr_t buf_taddr = request->params[1];
-	const uint32_t buf_len = request->params[2];
-#if CONFIG_BMDA == 1
-	if (buf_len == 0)
-		return 0;
-#endif
+	int32_t result = close(fd);
 
-	const int32_t result = semihosting_remote_write(target, fd, buf_taddr, buf_len);
-	if (result >= 0)
-		return buf_len - result;
-	return result;
+	semihosting_opened_fds &= ~(0x1 << fd);
+
+	if (result < 0) {
+		LOG_E("close: fd %" PRId32 " error", fd);
+		target->tc->gdb_errno = semihosting_errno();
+		return -1;
+	}
+
+	return 0;
 }
 
 int32_t semihosting_writec(target_s *const target, const semihosting_s *const request)
 {
 	const target_addr_t ch_taddr = request->r1;
-	(void)semihosting_remote_write(target, STDOUT_FILENO, ch_taddr, 1);
-	return 0;
+	uint8_t ch = '\0';
+
+	if (ch_taddr == TARGET_NULL) {
+		LOG_E("writec: null pointer");
+		target->tc->gdb_errno = TARGET_EFAULT;
+		return SEMIHOSTING_UNDEFINED;
+	}
+	ch = target_mem32_read8(target, ch_taddr);
+	if (target_check_error(target)) {
+		LOG_E("writec: memory read error");
+		target->tc->gdb_errno = TARGET_EFAULT;
+		return SEMIHOSTING_UNDEFINED;
+	}
+	cdc0_write(&ch, 1);
+	return SEMIHOSTING_UNDEFINED;
 }
 
 int32_t semihosting_write0(target_s *const target, const semihosting_s *const request)
 {
-	const target_addr_t str_begin_taddr = request->r1;
-	target_addr_t str_end_taddr;
-	for (str_end_taddr = str_begin_taddr; target_mem32_read8(target, str_end_taddr) != 0; ++str_end_taddr) {
-		if (target_check_error(target))
+	target_addr_t str = request->r1;
+	uint8_t ch = '\0';
+
+	if (str == TARGET_NULL) {
+		LOG_E("write0: null pointer");
+		target->tc->gdb_errno = TARGET_EFAULT;
+		return SEMIHOSTING_UNDEFINED;
+	}
+	/* memory access is only guaranteed up to the terminating NUL */
+	while ((ch = target_mem32_read8(target, str++)) != '\0') {
+		if (target_check_error(target)) {
+			LOG_E("write0: memory read error");
+			target->tc->gdb_errno = TARGET_EFAULT;
+			return SEMIHOSTING_UNDEFINED;
+		}
+		cdc0_write(&ch, 1);
+	}
+	return SEMIHOSTING_UNDEFINED;
+}
+
+int32_t semihosting_write(target_s *const target, const semihosting_s *const request)
+{
+	const int32_t fd = request->params[0] - 1;
+	const target_addr_t buf_taddr = request->params[1];
+	const uint32_t buf_len = request->params[2];
+	uint8_t buffer[STDOUT_READ_BUF_SIZE];
+
+	/* write requests to stdin and :semihosting-features always fail */
+	if ((fd == STDIN_FILENO) || (fd == FEATURE_FILENO)) {
+		LOG_E("write: can't write stdin/features");
+		target->tc->gdb_errno = TARGET_EINVAL;
+		return buf_len;
+	}
+
+	/* a real file: check the handle before moving any data */
+	const bool is_console = (fd == STDOUT_FILENO) || (fd == STDERR_FILENO);
+	if (!is_console && !is_semihosting_fd(fd)) {
+		LOG_E("write: file not open");
+		target->tc->gdb_errno = TARGET_EBADF;
+		return buf_len;
+	}
+
+	/* chunked write */
+	uint32_t total_written = 0U;
+	while (total_written < buf_len) {
+		uint32_t len = buf_len - total_written;
+		if (len > STDOUT_READ_BUF_SIZE)
+			len = STDOUT_READ_BUF_SIZE;
+
+		target_mem32_read(target, buffer, buf_taddr + total_written, len);
+		if (target_check_error(target)) {
+			LOG_E("write: memory read error");
+			target->tc->gdb_errno = TARGET_EFAULT;
 			break;
+		}
+
+		if (is_console) {
+			cdc0_write(buffer, len);
+			total_written += len;
+			continue;
+		}
+
+		const ssize_t bytes_written = write(fd, buffer, len);
+		if (bytes_written < 0) {
+			LOG_E("write: file write error");
+			target->tc->gdb_errno = semihosting_errno();
+			break;
+		}
+
+		total_written += (uint32_t)bytes_written;
+
+		if ((uint32_t)bytes_written < len) {
+			LOG_E("write: short write");
+			target->tc->gdb_errno = semihosting_errno();
+			break;
+		}
 	}
-	const int32_t len = str_end_taddr - str_begin_taddr;
-	if (len >= 0) {
-		const int32_t result = semihosting_remote_write(target, STDOUT_FILENO, str_begin_taddr, len);
-		if (result != len)
-			return -1;
+
+	/* SYS_WRITE returns the number of bytes NOT written; 0 = complete success */
+	return (int32_t)(buf_len - total_written);
+}
+
+int32_t semihosting_read(target_s *const target, const semihosting_s *const request)
+{
+	int32_t fd = request->params[0] - 1;
+	target_addr_t buf_taddr = request->params[1];
+	uint32_t buf_len = request->params[2];
+	uint8_t buffer[STDOUT_READ_BUF_SIZE];
+
+	if (fd == FEATURE_FILENO) {
+		uint32_t len = buf_len;
+		if (len > SEMIHOSTING_FEATURES_LENGTH - semihosting_features_offset)
+			len = SEMIHOSTING_FEATURES_LENGTH - semihosting_features_offset;
+		target_mem32_write(target, buf_taddr, semihosting_features + semihosting_features_offset, len);
+		if (target_check_error(target)) {
+			LOG_E("read: semihosting_features memory write error");
+			target->tc->gdb_errno = TARGET_EFAULT;
+			return buf_len;
+		}
+		semihosting_features_offset += len;
+		return (int32_t)(buf_len - len);
 	}
-	return 0;
-}
 
-int32_t semihosting_isatty(target_s *const target, const semihosting_s *const request)
-{
-	const int32_t fd = request->params[0] - 1;
-#if CONFIG_BMDA == 1
-	if (!target->stdout_redirected || fd > STDERR_FILENO) {
-		const int32_t result = isatty(fd);
-		target->tc->gdb_errno = semihosting_errno();
-		return result;
+	if ((fd == STDOUT_FILENO) || (fd == STDERR_FILENO)) {
+		LOG_E("read: can't read stdout/stderr");
+		target->tc->gdb_errno = TARGET_EINVAL;
+		return buf_len;
 	}
-#endif
-	gdb_putpacket_str_f("Fisatty,%08X", (unsigned)fd);
-	return semihosting_get_gdb_response(target->tc);
-}
 
-int32_t semihosting_seek(target_s *const target, const semihosting_s *const request)
-{
-	const int32_t fd = request->params[0] - 1;
-	const off_t offset = request->params[1];
-	/* Check if this is a request to seek in the :semihosting-features "file" */
-	if (request->params[0] == INT32_MAX) {
-		if (offset >= 0 && offset < (off_t)SEMIHOSTING_FEATURES_LENGTH)
-			semihosting_features_offset = (uint8_t)offset;
-		else
-			semihosting_features_offset = SEMIHOSTING_FEATURES_LENGTH;
-		return 0;
+	if (fd == STDIN_FILENO) {
+		return buf_len; /* nothing read, no error */
 	}
-#if CONFIG_BMDA == 1
-	if (!target->stdout_redirected || fd > STDERR_FILENO) {
-		const int32_t result = lseek(fd, offset, SEEK_SET) == offset ? 0 : -1;
-		target->tc->gdb_errno = semihosting_errno();
-		return result;
+
+	/* real file */
+	if (!is_semihosting_fd(fd)) {
+		LOG_E("read: file not open");
+		target->tc->gdb_errno = TARGET_EBADF;
+		return buf_len;
 	}
-#endif
-	gdb_putpacket_str_f("Flseek,%08X,%08lX,%08X", (unsigned)fd, (unsigned long)offset, SEEK_MODE_SET);
-	return semihosting_get_gdb_response(target->tc) == offset ? 0 : -1;
-}
 
-int32_t semihosting_rename(target_s *const target, const semihosting_s *const request)
-{
-#if CONFIG_BMDA == 1
-	const char *const old_file_name = semihosting_read_string(target, request->params[0], request->params[1]);
-	if (old_file_name == NULL)
-		return -1;
-	const char *const new_file_name = semihosting_read_string(target, request->params[2], request->params[3]);
-	if (new_file_name == NULL) {
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wcast-qual"
-		free((void *)old_file_name);
-#pragma GCC diagnostic pop
-		return -1;
+	/* chunked read */
+	uint32_t total_read = 0U;
+	while (total_read < buf_len) {
+		uint32_t len = buf_len - total_read;
+		if (len > STDOUT_READ_BUF_SIZE)
+			len = STDOUT_READ_BUF_SIZE;
+
+		const ssize_t bytes_read = read(fd, buffer, len);
+		if (bytes_read < 0) {
+			LOG_E("read: file read error");
+			target->tc->gdb_errno = semihosting_errno();
+			if (total_read == 0U)
+				return buf_len; /* fail */
+			break;              /* report partial transfer */
+		}
+
+		if (bytes_read == 0)
+			break; /* end of file */
+
+		target_mem32_write(target, buf_taddr + total_read, buffer, (size_t)bytes_read);
+		if (target_check_error(target)) {
+			LOG_E("read: memory write error");
+			target->tc->gdb_errno = TARGET_EFAULT;
+			break; /* report partial transfer */
+		}
+
+		total_read += (uint32_t)bytes_read;
+		/* keep reading */
 	}
-	const int32_t result = rename(old_file_name, new_file_name);
-	target->tc->gdb_errno = semihosting_errno();
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wcast-qual"
-	free((void *)old_file_name);
-	free((void *)new_file_name);
-#pragma GCC diagnostic pop
-	return result;
-#else
-	gdb_putpacket_str_f("Frename,%08" PRIX32 "/%08" PRIX32 ",%08" PRIX32 "/%08" PRIX32, request->params[0],
-		request->params[1] + 1U, request->params[2], request->params[3] + 1U);
-	return semihosting_get_gdb_response(target->tc);
-#endif
+
+	/* return number of bytes not read; 0 = all read */
+	return (int32_t)(buf_len - total_read);
 }
 
-int32_t semihosting_remove(target_s *const target, const semihosting_s *const request)
-{
-#if CONFIG_BMDA == 1
-	const char *const file_name = semihosting_read_string(target, request->params[0], request->params[1]);
-	if (file_name == NULL)
-		return -1;
-	const int32_t result = remove(file_name);
-	target->tc->gdb_errno = semihosting_errno();
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wcast-qual"
-	free((void *)file_name);
-#pragma GCC diagnostic pop
-	return result;
-#else
-	gdb_putpacket_str_f("Funlink,%08" PRIX32 "/%08" PRIX32, request->params[0], request->params[1] + 1U);
-	return semihosting_get_gdb_response(target->tc);
-#endif
-}
-
-int32_t semihosting_system(target_s *const target, const semihosting_s *const request)
-{
-	/* NB: Before use first enable system calls with the following gdb command: 'set remote system-call-allowed 1' */
-	gdb_putpacket_str_f("Fsystem,%08" PRIX32 "/%08" PRIX32, request->params[0], request->params[1] + 1U);
-	return semihosting_get_gdb_response(target->tc);
-}
-
-int32_t semihosting_file_length(target_s *const target, const semihosting_s *const request)
-{
-	/* Check if this is a request for the length of the :semihosting-features "file" */
-	if (request->params[0] == INT32_MAX)
-		return SEMIHOSTING_FEATURES_LENGTH;
-
-	const int32_t fd = request->params[0] - 1;
-#if CONFIG_BMDA == 1
-	if (!target->stdout_redirected || fd > STDERR_FILENO) {
-		struct stat file_stat;
-		const bool result = fstat(fd, &file_stat) == 0;
-		target->tc->gdb_errno = semihosting_errno();
-		if (!result || file_stat.st_size > INT32_MAX)
-			return -1;
-		return file_stat.st_size;
-	}
-#endif
-	/*
-	 * Provide space for receiving a fio_stat structure from GDB
-	 * defined as per GDB's gdbsupport/fileio.h
-	 * Note that the structure's fields are in big endian.
-	 * The field we're interested in (fst_size) starts at uint32_t 7
-	 * (the upper half of the file size), and includes uint32_t 8.
-	 */
-	uint32_t file_stat[16];
-	/* Tell the target layer to use this buffer for the IO */
-	target->target_options |= TOPT_IN_SEMIHOSTING_SYSCALL;
-	target->tc->semihosting_buffer_ptr = file_stat;
-	target->tc->semihosting_buffer_len = sizeof(file_stat);
-	/* Call GDB and ask for the file descriptor's stat info */
-	gdb_putpacket_str_f("Ffstat,%X,%08" PRIX32, (unsigned)fd, target->ram->start);
-	const int32_t stat_result = semihosting_get_gdb_response(target->tc);
-	target->target_options &= ~TOPT_IN_SEMIHOSTING_SYSCALL;
-	/* Extract the lower half of the file size from the buffer */
-	const uint32_t result = read_be4((uint8_t *)file_stat, sizeof(uint32_t) * 8U);
-	/* Check if the GDB remote fstat() failed or if the size was more than 2GiB */
-	if (stat_result || file_stat[7] != 0 || (result & 0x80000000U) != 0)
-		return -1;
-	return result;
-}
-
-#if CONFIG_BMDA == 0
-semihosting_time_s semihosting_get_time(target_s *const target)
-{
-	/* Provide space for reciving a fio_timeval structure from GDB */
-	uint8_t time_value[12U];
-	/* Tell the target layer to use this buffer for the IO */
-	target->target_options |= TOPT_IN_SEMIHOSTING_SYSCALL;
-	target->tc->semihosting_buffer_ptr = time_value;
-	target->tc->semihosting_buffer_len = sizeof(time_value);
-	/* Call GDB and ask for the current time using gettimeofday() */
-	gdb_putpacket_str_f("Fgettimeofday,%08" PRIX32 ",%08" PRIX32, target->ram->start, (target_addr_t)NULL);
-	const int32_t result = semihosting_get_gdb_response(target->tc);
-	target->target_options &= ~TOPT_IN_SEMIHOSTING_SYSCALL;
-	/* Check if the GDB remote gettimeofday() failed */
-	if (result)
-		return (semihosting_time_s){UINT64_MAX, UINT32_MAX};
-	/* Convert the resulting time value from big endian */
-	return (semihosting_time_s){read_be8(time_value, 4), read_be4(time_value, 0)};
-}
-#endif
-
-int32_t semihosting_clock(target_s *const target)
-{
-#if CONFIG_BMDA == 1
-	/* NB: Can't use clock() because that would give cpu time of BMDA process */
-	struct timeval current_time;
-	/* Get the current time from the host */
-	const bool result = gettimeofday(&current_time, NULL) == 0;
-	target->tc->gdb_errno = semihosting_errno();
-	if (!result)
-		return -1;
-	/* Extract the time value components */
-	const uint32_t seconds = current_time.tv_sec;
-	const uint32_t microseconds = (uint32_t)current_time.tv_usec;
-#else
-	/* Get the current time from the host */
-	const semihosting_time_s current_time = semihosting_get_time(target);
-	if (current_time.seconds == UINT32_MAX && current_time.microseconds == UINT64_MAX)
-		return (int32_t)current_time.seconds;
-	const uint32_t seconds = current_time.seconds;
-	const uint32_t microseconds = (uint32_t)current_time.microseconds;
-#endif
-	/*
-	 * Convert the resulting time to centiseconds (hundredths of a second)
-	 * NB: At the potential cost of some precision, the microseconds value has been
-	 *   cast down to a uint32_t to avoid doing a 64-bit division in the firmware.
-	 */
-	uint32_t centiseconds = (seconds * 100U) + (microseconds / 10000U);
-	/* If this is the first request for the wallclock since the target started, consider it the start */
-	if (semihosting_wallclock_epoch > centiseconds)
-		semihosting_wallclock_epoch = centiseconds;
-	centiseconds -= semihosting_wallclock_epoch;
-	/* Truncate the result back to a positive 32-bit integer */
-	return centiseconds & 0x7fffffffU;
-}
-
-int32_t semihosting_time(target_s *const target)
-{
-#if CONFIG_BMDA == 1
-	/* Get the current time in seconds from the host */
-	int32_t result = (int32_t)time(NULL);
-	target->tc->gdb_errno = semihosting_errno();
-	return result;
-#else
-	/* Get the current time from the host */
-	const semihosting_time_s current_time = semihosting_get_time(target);
-	/*
-	 * If the operation failed, the seconds member is already UINT32_MAX which is `-1`,
-	 * so just return it without validation having cast it to an int32_t
-	 */
-	return (int32_t)current_time.seconds;
-#endif
-}
-
-int32_t semihosting_elapsed(target_s *const target, const semihosting_s *const request)
-{
-	/* Extract where the write should occur to */
-	const target_addr_t block_taddr = request->r1;
-	/*
-	 * Acquire platform ticks (even if uint32_t ATM).
-	 * BMP: SysTicks. This is faster (on-probe) than talking to GDB.
-	 * BMDA: gettimeofday() as milliseconds.
-	 */
-	const uint64_t elapsed = platform_time_ms();
-	/* Write the elapsed ticks to the target as a pair of uint32_t in LE order per ABI */
-	return target_mem32_write(target, block_taddr, &elapsed, sizeof(elapsed)) ? -1 : 0;
-}
-
+/* readc: always returns EOF */
 int32_t semihosting_readc(target_s *const target)
 {
-	/* Define space for a character */
-	uint8_t ch = '?';
-
-	/* Tell the target layer to write to this character as a buffer for the IO */
-	target->target_options |= TOPT_IN_SEMIHOSTING_SYSCALL;
-	target->tc->semihosting_buffer_ptr = &ch;
-	target->tc->semihosting_buffer_len = 1U;
-	/* Call GDB and ask for a character using read(STDIN_FILENO) */
-	const int32_t result = semihosting_remote_read(target, STDIN_FILENO, target->ram->start, 1U);
-	target->target_options &= ~TOPT_IN_SEMIHOSTING_SYSCALL;
-	/* Check if the GDB remote read() */
-	if (result != 1)
-		return -1;
-	/* Extract the character read from the buffer */
-	return ch;
-}
-
-int32_t semihosting_exit(target_s *const target, const semihosting_exit_reason_e reason, const uint32_t status_code)
-{
-	if (reason == EXIT_REASON_APPLICATION_EXIT)
-		tc_printf(target, "exit(%" PRIu32 ")\n", status_code);
-	else
-		tc_printf(target, "Exception trapped: %x (%" PRIu32 ")\n", reason, status_code);
-	target_halt_resume(target, true);
-	return 0;
-}
-
-int32_t semihosting_get_command_line(target_s *const target, const semihosting_s *const request)
-{
-	/* Extract the location of the result buffer and its length */
-	const target_addr_t buffer_taddr = request->params[0];
-	const size_t buffer_length = request->params[1];
-	/* Figure out how long the command line string is */
-	const size_t command_line_length = strlen(target->cmdline) + 1U;
-	/* Check that we won't exceed the target buffer with the write */
-	if (command_line_length > buffer_length ||
-		/* Try to write the data to the target along with the actual length value */
-		target_mem32_write(target, buffer_taddr, target->cmdline, command_line_length))
-		return -1;
-	return target_mem32_write32(target, request->r1 + 4U, command_line_length) ? -1 : 0;
+	return SEMIHOSTING_READC_EOF;
 }
 
 int32_t semihosting_is_error(const semihosting_errno_e code)
 {
-	/* Convert a FileIO-domain errno into whether it indicates an error has occured or not */
 	const bool is_error = code == TARGET_EPERM || code == TARGET_ENOENT || code == TARGET_EINTR || code == TARGET_EIO ||
 		code == TARGET_EBADF || code == TARGET_EACCES || code == TARGET_EFAULT || code == TARGET_EBUSY ||
 		code == TARGET_EEXIST || code == TARGET_ENODEV || code == TARGET_ENOTDIR || code == TARGET_EISDIR ||
 		code == TARGET_EINVAL || code == TARGET_ENFILE || code == TARGET_EMFILE || code == TARGET_EFBIG ||
 		code == TARGET_ENOSPC || code == TARGET_ESPIPE || code == TARGET_EROFS || code == TARGET_ENOSYS ||
 		code == TARGET_ENAMETOOLONG || code == TARGET_EUNKNOWN;
-	/* The Semihosting ABI specifies any non-zero response s a truthy one, so just return the bool as-is */
 	return is_error;
 }
 
-int32_t semihosting_heap_info(target_s *const target, const semihosting_s *const request)
+int32_t semihosting_isatty(target_s *const target, const semihosting_s *const request)
 {
-	/* Extract where the write should occur to */
-	const target_addr_t block_taddr = request->r1;
-	/*
-	 * Write the heapinfo block to the target
-	 * See https://github.com/ARM-software/abi-aa/blob/main/semihosting/semihosting.rst#69sys_heapinfo-0x16
-	 * for more information on the layout of is block and the significance of how this is structured
-	 */
-	return target_mem32_write(target, block_taddr, target->heapinfo, sizeof(target->heapinfo)) ? -1 : 0;
+	const int32_t fd = request->params[0] - 1;
+
+	if (fd == STDIN_FILENO || fd == STDOUT_FILENO || fd == STDERR_FILENO)
+		return 1; /* console is tty */
+
+	if (fd == FEATURE_FILENO || is_semihosting_fd(fd))
+		return 0; /* fd valid, but is no tty */
+
+	LOG_E("isatty: invalid fd");
+	target->tc->gdb_errno = TARGET_EBADF;
+	return -1; /* fd invalid */
+}
+
+int32_t semihosting_seek(target_s *const target, const semihosting_s *const request)
+{
+	const int32_t fd = request->params[0] - 1;
+	const off_t offset = (off_t)request->params[1];
+
+	if (fd == STDIN_FILENO || fd == STDOUT_FILENO || fd == STDERR_FILENO) {
+		LOG_E("seek: seek on console");
+		target->tc->gdb_errno = TARGET_ESPIPE;
+		return -1;
+	}
+
+	if (fd == FEATURE_FILENO) {
+		if (offset >= 0 && offset < (off_t)SEMIHOSTING_FEATURES_LENGTH)
+			semihosting_features_offset = (uint8_t)offset;
+		else
+			semihosting_features_offset = SEMIHOSTING_FEATURES_LENGTH;
+		return 0;
+	}
+
+	if (!is_semihosting_fd(fd)) {
+		LOG_E("seek: no access");
+		target->tc->gdb_errno = TARGET_EACCES;
+		return -1;
+	}
+
+	const off_t result = lseek(fd, offset, SEEK_SET);
+
+	if (result != offset) {
+		LOG_E("seek: seek failed");
+		target->tc->gdb_errno = semihosting_errno();
+		return -1;
+	}
+
+	return 0;
+}
+
+int32_t semihosting_file_length(target_s *const target, const semihosting_s *const request)
+{
+	const int32_t fd = request->params[0] - 1;
+	struct stat file_stat;
+
+	if (fd == FEATURE_FILENO)
+		return SEMIHOSTING_FEATURES_LENGTH;
+
+	if (fd == STDIN_FILENO || fd == STDOUT_FILENO || fd == STDERR_FILENO)
+		return 0;
+
+	if (!is_semihosting_fd(fd)) {
+		LOG_E("flen: no access");
+		target->tc->gdb_errno = TARGET_EACCES;
+		return -1;
+	}
+
+	if (fstat(fd, &file_stat) < 0) {
+		LOG_E("flen: fstat error");
+		target->tc->gdb_errno = semihosting_errno();
+		return -1;
+	}
+
+	if (file_stat.st_size > INT32_MAX) {
+		LOG_E("flen: file too big");
+		target->tc->gdb_errno = TARGET_EFBIG;
+		return -1;
+	}
+
+	return (int32_t)file_stat.st_size;
 }
 
 int32_t semihosting_temp_name(target_s *const target, const semihosting_s *const request)
 {
-	/* Pull out the value to format into the result string (clamping it into the range 0-255) */
+	const target_addr_t buffer_taddr = request->params[0];
 	const uint8_t target_id = request->params[1];
-	/* Format the new ID into the file name string */
+	const size_t buffer_length = request->params[2];
+
 	char file_name[SEMIHOSTING_TEMPNAME_LENGTH];
 	memcpy(file_name, semihosting_tempname_template, SEMIHOSTING_TEMPNAME_LENGTH);
-	file_name[4] += target_id >> 4U;
-	file_name[5] += target_id & 0xffU;
-	/* Now extract and check that we have enough space to write the result back to */
-	const target_addr_t buffer_taddr = request->params[0];
-	const size_t buffer_length = request->params[2];
-	if (buffer_length < sizeof(file_name))
+
+	file_name[12] += (target_id >> 4U) & 0xfU;
+	file_name[13] += target_id & 0xfU;
+
+	if (buffer_length < sizeof(file_name)) {
+		target->tc->gdb_errno = TARGET_EINVAL;
+		LOG_E("tmpnam: buffer too small");
 		return -1;
-	/* If we have enough space, attempt the write back */
-	return target_mem32_write(target, buffer_taddr, file_name, SEMIHOSTING_TEMPNAME_LENGTH) ? -1 : 0;
+	}
+
+	target_mem32_write(target, buffer_taddr, file_name, SEMIHOSTING_TEMPNAME_LENGTH);
+
+	if (target_check_error(target)) {
+		LOG_E("tmpnam: memory write error");
+		target->tc->gdb_errno = TARGET_EFAULT;
+		return -1;
+	}
+
+	return 0;
+}
+
+int32_t semihosting_remove(target_s *const target, const semihosting_s *const request)
+{
+	char path[SEMIHOSTING_PATH_MAX];
+
+	if (!settings.fileio_enable) {
+		LOG_E("remove: file i/o disabled in settings");
+		target->tc->gdb_errno = TARGET_EACCES;
+		return -1;
+	}
+
+	if (!semihosting_read_path(target, request->params[0], request->params[1], path))
+		return -1;
+
+	if (unlink(path) < 0) {
+		LOG_E("remove: '%s' failed", path);
+		const semihosting_errno_e host_errno = semihosting_errno();
+		target->tc->gdb_errno = host_errno;
+		return host_errno;
+	}
+
+	return 0;
+}
+
+int32_t semihosting_rename(target_s *const target, const semihosting_s *const request)
+{
+	char old_path[SEMIHOSTING_PATH_MAX];
+	char new_path[SEMIHOSTING_PATH_MAX];
+
+	if (!settings.fileio_enable) {
+		LOG_E("rename: file i/o disabled in settings");
+		target->tc->gdb_errno = TARGET_EACCES;
+		return -1;
+	}
+
+	if (!semihosting_read_path(target, request->params[0], request->params[1], old_path) ||
+		!semihosting_read_path(target, request->params[2], request->params[3], new_path))
+		return -1;
+
+	if (rename(old_path, new_path) < 0) {
+		LOG_E("rename: '%s' '%s' failed", old_path, new_path);
+		const semihosting_errno_e host_errno = semihosting_errno();
+		target->tc->gdb_errno = host_errno;
+		return host_errno;
+	}
+
+	return 0;
+}
+
+int32_t semihosting_clock(target_s *const target)
+{
+	(void)target;
+
+	uint32_t centiseconds = (uint32_t)(rt_tick_get_millisecond() / 10U);
+	if (semihosting_wallclock_epoch > centiseconds)
+		semihosting_wallclock_epoch = centiseconds;
+	centiseconds -= semihosting_wallclock_epoch;
+	centiseconds = (int32_t)(centiseconds & 0x7fffffff); /* truncate */
+
+	return (int32_t)centiseconds;
+}
+
+int32_t semihosting_time(target_s *const target)
+{
+	(void)target;
+
+	return (int32_t)time(NULL);
+}
+
+int32_t semihosting_system(target_s *const target, const semihosting_s *const request)
+{
+	char cmd[SEMIHOSTING_PATH_MAX + 1];
+	const target_addr_t buffer_taddr = request->params[0];
+	const size_t buffer_length = request->params[1];
+
+	if (!settings.shell_enable) {
+		LOG_E("system: shell disabled in settings");
+		target->tc->gdb_errno = TARGET_EACCES;
+		return -1;
+	}
+
+	if (buffer_taddr == TARGET_NULL || buffer_length == 0U || buffer_length >= SEMIHOSTING_PATH_MAX) {
+		LOG_E("system: invalid string");
+		target->tc->gdb_errno = TARGET_EINVAL;
+		return -1;
+	}
+
+	target_mem32_read(target, cmd, buffer_taddr, buffer_length);
+
+	if (target_check_error(target)) {
+		LOG_E("system: memory read error");
+		target->tc->gdb_errno = TARGET_EFAULT;
+		return -1;
+	}
+
+	cmd[buffer_length] = '\0';
+
+	/* Warning: stack overflow risk */
+	int32_t result = msh_exec(cmd, buffer_length);
+
+	LOG_I("system: command '%s' return status %d", cmd, result);
+
+	return result;
+}
+
+int32_t semihosting_get_command_line(target_s *const target, const semihosting_s *const request)
+{
+	const target_addr_t buffer_taddr = request->params[0];
+	const size_t buffer_length = request->params[1];
+	const size_t command_line_length = strlen(target->cmdline) + 1U;
+
+	if (command_line_length > buffer_length) {
+		LOG_E("cmdline: buffer too small");
+		target->tc->gdb_errno = TARGET_EFAULT;
+		return -1;
+	}
+
+	target_mem32_write(target, buffer_taddr, target->cmdline, command_line_length);
+	if (target_check_error(target)) {
+		LOG_E("cmdline: memory write error");
+		target->tc->gdb_errno = TARGET_EFAULT;
+		return -1;
+	}
+
+	target_mem32_write32(target, request->r1 + 4U, command_line_length);
+	if (target_check_error(target)) {
+		LOG_E("cmdline: memory write error");
+		target->tc->gdb_errno = TARGET_EFAULT;
+		return -1;
+	}
+
+	return 0;
+}
+
+int32_t semihosting_heap_info(target_s *const target, const semihosting_s *const request)
+{
+	const target_addr_t block_taddr = request->r1;
+
+	target_mem32_write(target, block_taddr, target->heapinfo, sizeof(target->heapinfo));
+
+	if (target_check_error(target)) {
+		LOG_E("heapinfo: memory write error");
+		target->tc->gdb_errno = TARGET_EFAULT;
+		return -1;
+	}
+
+	return 0;
+}
+
+int32_t semihosting_exit(target_s *const target, const semihosting_exit_reason_e reason, const uint32_t status_code)
+{
+	if (reason == EXIT_REASON_APPLICATION_EXIT)
+		LOG_I("exit(%" PRIu32 ")\n", status_code);
+	else
+		LOG_I("Exception trapped: %x (%" PRIu32 ")\n", reason, status_code);
+	target_halt_resume(target, true);
+
+	return 0;
+}
+
+int32_t semihosting_elapsed(target_s *const target, const semihosting_s *const request)
+{
+	const target_addr_t block_taddr = request->r1;
+
+	const uint64_t elapsed = rt_tick_get();
+	if (target_mem32_write(target, block_taddr, &elapsed, sizeof(elapsed))) {
+		LOG_E("elapsed: memory write error");
+		target->tc->gdb_errno = TARGET_EFAULT;
+		/* spec: on failure the RETURN REGISTER contains -1, and the PARAMETER REGISTER contains -1 */
+		uint32_t result = -1;
+		target_reg_write(target, 1, &result, sizeof(result));
+		return -1;
+	}
+	return 0;
 }
 
 int32_t semihosting_handle_request(target_s *const target, const semihosting_s *const request, const uint32_t syscall)
@@ -824,17 +790,23 @@ int32_t semihosting_handle_request(target_s *const target, const semihosting_s *
 	case SEMIHOSTING_SYS_CLOSE:
 		return semihosting_close(target, request);
 
-	case SEMIHOSTING_SYS_READ:
-		return semihosting_read(target, request);
-
-	case SEMIHOSTING_SYS_WRITE:
-		return semihosting_write(target, request);
-
 	case SEMIHOSTING_SYS_WRITEC:
 		return semihosting_writec(target, request);
 
 	case SEMIHOSTING_SYS_WRITE0:
 		return semihosting_write0(target, request);
+
+	case SEMIHOSTING_SYS_WRITE:
+		return semihosting_write(target, request);
+
+	case SEMIHOSTING_SYS_READ:
+		return semihosting_read(target, request);
+
+	case SEMIHOSTING_SYS_READC:
+		return semihosting_readc(target);
+
+	case SEMIHOSTING_SYS_ISERROR:
+		return semihosting_is_error(request->params[0]);
 
 	case SEMIHOSTING_SYS_ISTTY:
 		return semihosting_isatty(target, request);
@@ -842,17 +814,17 @@ int32_t semihosting_handle_request(target_s *const target, const semihosting_s *
 	case SEMIHOSTING_SYS_SEEK:
 		return semihosting_seek(target, request);
 
-	case SEMIHOSTING_SYS_RENAME:
-		return semihosting_rename(target, request);
+	case SEMIHOSTING_SYS_FLEN:
+		return semihosting_file_length(target, request);
+
+	case SEMIHOSTING_SYS_TMPNAM:
+		return semihosting_temp_name(target, request);
 
 	case SEMIHOSTING_SYS_REMOVE:
 		return semihosting_remove(target, request);
 
-	case SEMIHOSTING_SYS_SYSTEM:
-		return semihosting_system(target, request);
-
-	case SEMIHOSTING_SYS_FLEN:
-		return semihosting_file_length(target, request);
+	case SEMIHOSTING_SYS_RENAME:
+		return semihosting_rename(target, request);
 
 	case SEMIHOSTING_SYS_CLOCK:
 		return semihosting_clock(target);
@@ -860,12 +832,18 @@ int32_t semihosting_handle_request(target_s *const target, const semihosting_s *
 	case SEMIHOSTING_SYS_TIME:
 		return semihosting_time(target);
 
-	case SEMIHOSTING_SYS_READC:
-		return semihosting_readc(target);
+	case SEMIHOSTING_SYS_SYSTEM:
+		return semihosting_system(target, request);
 
 	case SEMIHOSTING_SYS_ERRNO:
 		/* Return the last errno we got from GDB */
 		return target->tc->gdb_errno;
+
+	case SEMIHOSTING_SYS_GET_CMDLINE:
+		return semihosting_get_command_line(target, request);
+
+	case SEMIHOSTING_SYS_HEAPINFO:
+		return semihosting_heap_info(target, request);
 
 	case SEMIHOSTING_SYS_EXIT:
 		return semihosting_exit(target, request->r1, 0);
@@ -873,26 +851,14 @@ int32_t semihosting_handle_request(target_s *const target, const semihosting_s *
 	case SEMIHOSTING_SYS_EXIT_EXTENDED:
 		return semihosting_exit(target, request->params[0], request->params[1]);
 
-	case SEMIHOSTING_SYS_GET_CMDLINE:
-		return semihosting_get_command_line(target, request);
-
-	case SEMIHOSTING_SYS_ISERROR:
-		return semihosting_is_error(request->params[0]);
-
-	case SEMIHOSTING_SYS_HEAPINFO:
-		return semihosting_heap_info(target, request);
-
-	case SEMIHOSTING_SYS_TMPNAM:
-		return semihosting_temp_name(target, request);
-
 	case SEMIHOSTING_SYS_ELAPSED:
 		return semihosting_elapsed(target, request);
 
 	case SEMIHOSTING_SYS_TICKFREQ:
-		/* 1000 Hz SysTick, or BMDA "precision". Servicing breakpoints over SWD is not fast. */
-		return SYSTICKHZ;
+		return RT_TICK_PER_SECOND;
 
 	default:
+		LOG_E("semihosting: unimplemented syscall 0x%02" PRIx32, syscall);
 		return -1;
 	}
 }
@@ -907,20 +873,23 @@ int32_t semihosting_request(target_s *const target, const uint32_t syscall, cons
 	if (syscall != SEMIHOSTING_SYS_EXIT)
 		target_mem32_read(target, request.params, r1, sizeof(request.params));
 
-#if ENABLE_DEBUG == 1
-	const char *syscall_descr = NULL;
-	if (syscall < ARRAY_LENGTH(semihosting_names))
-		syscall_descr = semihosting_names[syscall];
-	if (syscall_descr == NULL)
-		syscall_descr = "";
-
-	DEBUG_INFO("syscall %12s (%" PRIx32 " %" PRIx32 " %" PRIx32 " %" PRIx32 ")\n", syscall_descr, request.params[0],
-		request.params[1], request.params[2], request.params[3]);
-#endif
-
-#if CONFIG_BMDA == 1
 	if (syscall != SEMIHOSTING_SYS_ERRNO)
 		target->tc->gdb_errno = TARGET_SUCCESS;
-#endif
+
+	const char *syscall_descr = "";
+	if (syscall < ARRAY_LENGTH(semihosting_names) && semihosting_names[syscall] != NULL)
+		syscall_descr = semihosting_names[syscall];
+
+	LOG_D("syscall 0x%02x %-12s (0x%" PRIx32 " 0x%" PRIx32 " 0x%" PRIx32 " 0x%" PRIx32 ")", syscall, syscall_descr,
+		request.params[0], request.params[1], request.params[2], request.params[3]);
+
 	return semihosting_handle_request(target, &request, syscall);
+}
+
+int32_t semihosting_reply(target_controller_s *const tc, const char *const pbuf)
+{
+	(void)pbuf;
+	tc->interrupted = false;
+	tc->gdb_errno = TARGET_EUNKNOWN;
+	return -1;
 }
