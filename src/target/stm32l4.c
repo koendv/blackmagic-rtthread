@@ -1106,7 +1106,7 @@ static stm32l4_option_bytes_info_s stm32l4_get_opt_bytes_info(const uint16_t par
 	switch (part_id) {
 	case ID_STM32L43:
 		return (stm32l4_option_bytes_info_s){
-			.word_count = 5,
+			.word_count = 5U,
 			.offsets = stm32l4_opt_reg_offsets,
 			.default_values = stm32l4_default_options_values,
 		};
@@ -1119,7 +1119,7 @@ static stm32l4_option_bytes_info_s stm32l4_get_opt_bytes_info(const uint16_t par
 	case ID_STM32G43:
 	case ID_STM32G49:
 		return (stm32l4_option_bytes_info_s){
-			.word_count = 6,
+			.word_count = 6U,
 			.offsets = stm32g4_opt_reg_offsets,
 			.default_values = stm32g4_default_options_values,
 		};
@@ -1199,7 +1199,7 @@ static bool stm32l4_cmd_option(target_s *const target, const int argc, const cha
 	const uint8_t *const opt_reg_offsets = info.offsets;
 
 	const size_t word_count = info.word_count;
-	uint32_t values[11] = {0};
+	uint32_t values[16U] = {0};
 	for (size_t i = 0; i < word_count; ++i)
 		values[i] = info.default_values[i];
 
