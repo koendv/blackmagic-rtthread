@@ -131,13 +131,13 @@ static void jtagtap_tms_seq_clk_delay(uint32_t tms_states, const size_t clock_cy
 	for (size_t cycle = 0; cycle < clock_cycles; ++cycle) {
 		const bool state = tms_states & 1U;
 		gpio_set_val(TMS_PORT, TMS_PIN, state);
+		for (volatile uint32_t counter = target_clk_divider; counter > 0; --counter)
+			continue;
 		gpio_set(TCK_PORT, TCK_PIN);
-		for (volatile uint32_t counter = target_clk_divider; counter > 0; --counter)
-			continue;
 		tms_states >>= 1U;
-		gpio_clear(TCK_PORT, TCK_PIN);
 		for (volatile uint32_t counter = target_clk_divider; counter > 0; --counter)
 			continue;
+		gpio_clear(TCK_PORT, TCK_PIN);
 	}
 }
 
@@ -146,11 +146,13 @@ static void jtagtap_tms_seq_no_delay(uint32_t tms_states, const size_t clock_cyc
 	bool state = tms_states & 1U;
 	for (size_t cycle = 0; cycle < clock_cycles; ++cycle) {
 		gpio_set_val(TMS_PORT, TMS_PIN, state);
-		gpio_set(TCK_PORT, TCK_PIN);
 		/* Block the compiler from re-ordering the TMS states calculation to preserve timings */
 		__asm__ volatile("" ::: "memory");
 		tms_states >>= 1U;
 		state = tms_states & 1U;
+		/* Block the compiler from re-ordering the TMS states calculation to preserve timings */
+		__asm__ volatile("" ::: "memory");
+		gpio_set(TCK_PORT, TCK_PIN);
 		__asm__("nop");
 		__asm__("nop");
 		gpio_clear(TCK_PORT, TCK_PIN);
