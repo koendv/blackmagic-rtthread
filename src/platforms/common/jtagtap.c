@@ -322,22 +322,25 @@ static void jtagtap_tdi_seq(const bool final_tms, const uint8_t *const data_in, 
 static void jtagtap_cycle_clk_delay(const size_t clock_cycles)
 {
 	for (size_t cycle = 0; cycle < clock_cycles; ++cycle) {
+		for (volatile uint32_t counter = target_clk_divider; counter > 0; --counter)
+			continue;
 		gpio_set(TCK_PORT, TCK_PIN);
 		for (volatile uint32_t counter = target_clk_divider; counter > 0; --counter)
 			continue;
 		gpio_clear(TCK_PORT, TCK_PIN);
-		for (volatile uint32_t counter = target_clk_divider; counter > 0; --counter)
-			continue;
 	}
 }
 
 static void jtagtap_cycle_no_delay(const size_t clock_cycles)
 {
 	for (size_t cycle = 0; cycle < clock_cycles; ++cycle) {
-		gpio_set(TCK_PORT, TCK_PIN);
-		__asm__ volatile("nop" ::: "memory");
 		gpio_clear(TCK_PORT, TCK_PIN);
+		__asm__ volatile("nop" ::: "memory");
+		gpio_set(TCK_PORT, TCK_PIN);
+		/* Block the compiler from re-ordering to preserve timings */
+		__asm__ volatile("" ::: "memory");
 	}
+	gpio_clear(TCK_PORT, TCK_PIN);
 }
 
 static void jtagtap_cycle(const bool tms, const bool tdi, const size_t clock_cycles)
