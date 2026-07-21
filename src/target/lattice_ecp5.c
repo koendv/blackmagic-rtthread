@@ -243,7 +243,7 @@ static const uint8_t ecp5_spi_unlock[2U] = {0xfeU, 0x68U};
 
 typedef struct ecp5_ctx {
 	uint8_t device_index;
-	uint8_t *xfr_buffer;
+	uint8_t xfr_buffer[ECP5_XFR_BUFFER_SIZE];
 } ecp5_ctx_s;
 
 typedef struct ecp5_device {
@@ -286,7 +286,6 @@ static const command_s ecp5_cmd_list[] = {
 	{NULL, NULL, NULL},
 };
 
-static void ecp5_free_ctx(void *priv);
 static uint32_t ecp5_read32(uint8_t dev_index, uint8_t cmd);
 
 static bool ecp5_attach(target_s *target);
@@ -319,7 +318,7 @@ void lattice_ecp5_handler(const uint8_t dev_index)
 		return;
 	}
 
-	target->priv_free = ecp5_free_ctx;
+	target->priv_free = free;
 	target->attach = ecp5_attach;
 	target->check_error = ecp5_check_error;
 	target->reset = ecp5_reset;
@@ -351,20 +350,6 @@ void lattice_ecp5_handler(const uint8_t dev_index)
 
 	ecp5_ctx_s *ctx = target->priv;
 	ctx->device_index = dev_index;
-
-	// Setup the transfer buffer
-	ctx->xfr_buffer = calloc(1, ECP5_XFR_BUFFER_SIZE);
-
-	if (!ctx->xfr_buffer)
-		DEBUG_ERROR("calloc: failed in %s\n", __func__);
-}
-
-static void ecp5_free_ctx(void *const priv)
-{
-	const ecp5_ctx_s *const ctx = (ecp5_ctx_s *)priv;
-
-	free(ctx->xfr_buffer);
-	free(priv);
 }
 
 static uint32_t ecp5_read32(const uint8_t dev_index, const uint8_t cmd)
@@ -515,7 +500,7 @@ static bool ecp5_spi_flash_done(target_flash_s *flash)
 static void ecp5_spi_read(target_s *const target, const uint16_t command, const target_addr_t address,
 	void *const buffer, const size_t length)
 {
-	const ecp5_ctx_s *ctx = (ecp5_ctx_s *)target->priv;
+	ecp5_ctx_s *const ctx = (ecp5_ctx_s *)target->priv;
 
 	size_t offset = 0U;
 	ctx->xfr_buffer[offset++] = SPI_FLASH_OPCODE(command);
@@ -539,7 +524,8 @@ static void ecp5_spi_read(target_s *const target, const uint16_t command, const 
 static void ecp5_spi_write(target_s *const target, const uint16_t command, const target_addr_t address,
 	const void *const buffer, const size_t length)
 {
-	const ecp5_ctx_s *ctx = (ecp5_ctx_s *)target->priv;
+	ecp5_ctx_s *const ctx = (ecp5_ctx_s *)target->priv;
+
 	size_t offset = 0U;
 	ctx->xfr_buffer[offset++] = SPI_FLASH_OPCODE(command);
 	if ((command & SPI_FLASH_OPCODE_MODE_MASK) == SPI_FLASH_OPCODE_3B_ADDR) {
