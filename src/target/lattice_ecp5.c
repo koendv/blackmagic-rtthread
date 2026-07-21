@@ -236,12 +236,14 @@
 #define ECP5_SRAM_BASE  0x00000000U
 #define ECP5_FLASH_BASE 0x04000000U
 
+// 4KiB Data buffer + 4 byte SPI command
+#define ECP5_XFR_BUFFER_SIZE 0x1004U
+
 static const uint8_t ecp5_spi_unlock[2U] = {0xfeU, 0x68U};
 
 typedef struct ecp5_ctx {
 	uint8_t device_index;
 	uint8_t *xfr_buffer;
-	uint16_t buffer_len;
 } ecp5_ctx_s;
 
 typedef struct ecp5_device {
@@ -351,8 +353,7 @@ void lattice_ecp5_handler(const uint8_t dev_index)
 	ctx->device_index = dev_index;
 
 	// Setup the transfer buffer
-	ctx->buffer_len = 4100U;
-	ctx->xfr_buffer = calloc(1, ctx->buffer_len);
+	ctx->xfr_buffer = calloc(1, ECP5_XFR_BUFFER_SIZE);
 
 	if (!ctx->xfr_buffer)
 		DEBUG_ERROR("calloc: failed in %s\n", __func__);
