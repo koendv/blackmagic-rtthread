@@ -98,13 +98,13 @@ static void jtagtap_reset(void)
 
 static bool jtagtap_next_clk_delay(void)
 {
+	for (volatile uint32_t counter = target_clk_divider; counter > 0; --counter)
+		continue;
 	gpio_set(TCK_PORT, TCK_PIN);
-	for (volatile uint32_t counter = target_clk_divider; counter > 0; --counter)
-		continue;
 	const uint16_t result = gpio_get(TDO_PORT, TDO_PIN);
-	gpio_clear(TCK_PORT, TCK_PIN);
 	for (volatile uint32_t counter = target_clk_divider; counter > 0; --counter)
 		continue;
+	gpio_clear(TCK_PORT, TCK_PIN);
 	return result != 0;
 }
 
