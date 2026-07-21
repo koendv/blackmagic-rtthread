@@ -181,9 +181,9 @@ static void jtagtap_tdi_tdo_seq_clk_delay(
 		/* Set up the TDI pin and start the clock cycle */
 		gpio_set_val(TDI_PORT, TDI_PIN, data_in[byte] & (1U << bit));
 		/* Start the clock cycle */
-		gpio_set(TCK_PORT, TCK_PIN);
 		for (volatile uint32_t counter = target_clk_divider; counter > 0; --counter)
 			continue;
+		gpio_set(TCK_PORT, TCK_PIN);
 		/* If TDO is high, store a 1 in the appropriate position in the value being accumulated */
 		if (gpio_get(TDO_PORT, TDO_PIN))
 			value |= 1U << bit;
@@ -192,9 +192,9 @@ static void jtagtap_tdi_tdo_seq_clk_delay(
 			value = 0;
 		}
 		/* Finish the clock cycle */
-		gpio_clear(TCK_PORT, TCK_PIN);
 		for (volatile uint32_t counter = target_clk_divider; counter > 0; --counter)
 			continue;
+		gpio_clear(TCK_PORT, TCK_PIN);
 	}
 	/* If clock_cycles is not divisible by 8, we have some extra data to write back here. */
 	if (clock_cycles & 7U) {
