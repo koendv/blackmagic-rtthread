@@ -269,13 +269,13 @@ static void jtagtap_tdi_seq_clk_delay(const uint8_t *const data_in, const bool f
 		gpio_set_val(TMS_PORT, TMS_PIN, cycle + 1U >= clock_cycles && final_tms);
 		/* Set up the TDI pin and start the clock cycle */
 		gpio_set_val(TDI_PORT, TDI_PIN, data_in[byte] & (1U << bit));
+		for (volatile uint32_t counter = target_clk_divider; counter > 0; --counter)
+			continue;
 		gpio_set(TCK_PORT, TCK_PIN);
-		for (volatile uint32_t counter = target_clk_divider; counter > 0; --counter)
-			continue;
 		/* Finish the clock cycle */
-		gpio_clear(TCK_PORT, TCK_PIN);
 		for (volatile uint32_t counter = target_clk_divider; counter > 0; --counter)
 			continue;
+		gpio_clear(TCK_PORT, TCK_PIN);
 	}
 }
 
