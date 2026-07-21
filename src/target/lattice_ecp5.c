@@ -240,8 +240,7 @@ static const uint8_t ecp5_spi_unlock[2U] = {0xfeU, 0x68U};
 
 typedef struct ecp5_ctx {
 	uint8_t device_index;
-	uint8_t *cmd_buffer;
-	uint8_t *data_buffer;
+	uint8_t *xfr_buffer;
 	uint16_t buffer_len;
 } ecp5_ctx_s;
 
@@ -350,12 +349,12 @@ void lattice_ecp5_handler(const uint8_t dev_index)
 
 	ecp5_ctx_s *ctx = target->priv;
 	ctx->device_index = dev_index;
-	// Setup the command/data buffers
-	ctx->buffer_len = 4100U;
-	ctx->data_buffer = calloc(1, ctx->buffer_len);
-	ctx->cmd_buffer = calloc(1, ctx->buffer_len);
 
-	if (!ctx->data_buffer || !ctx->cmd_buffer)
+	// Setup the transfer buffer
+	ctx->buffer_len = 4100U;
+	ctx->xfr_buffer = calloc(1, ctx->buffer_len);
+
+	if (!ctx->xfr_buffer)
 		DEBUG_ERROR("calloc: failed in %s\n", __func__);
 }
 
@@ -363,8 +362,7 @@ static void ecp5_free_ctx(void *const priv)
 {
 	const ecp5_ctx_s *const ctx = (ecp5_ctx_s *)priv;
 
-	free(ctx->cmd_buffer);
-	free(ctx->data_buffer);
+	free(ctx->xfr_buffer);
 	free(priv);
 }
 
@@ -517,22 +515,24 @@ static void ecp5_spi_read(target_s *const target, const uint16_t command, const 
 	void *const buffer, const size_t length)
 {
 	const ecp5_ctx_s *ctx = (ecp5_ctx_s *)target->priv;
+
 	size_t offset = 0U;
-	ctx->cmd_buffer[offset++] = SPI_FLASH_OPCODE(command);
+	ctx->xfr_buffer[offset++] = SPI_FLASH_OPCODE(command);
 	if ((command & SPI_FLASH_OPCODE_MODE_MASK) == SPI_FLASH_OPCODE_3B_ADDR) {
-		ctx->cmd_buffer[offset++] = (address & 0xff0000U) >> 16U;
-		ctx->cmd_buffer[offset++] = (address & 0x00ff00U) >> 8U;
-		ctx->cmd_buffer[offset++] = address & 0x0000ffU;
+		ctx->xfr_buffer[offset++] = (address & 0xff0000U) >> 16U;
+		ctx->xfr_buffer[offset++] = (address & 0x00ff00U) >> 8U;
+		ctx->xfr_buffer[offset++] = address & 0x0000ffU;
 	}
 
 	const size_t dummy_len = (command & SPI_FLASH_DUMMY_MASK) >> SPI_FLASH_DUMMY_SHIFT;
 	for (size_t dummy = 0U; dummy < dummy_len; ++dummy)
-		ctx->cmd_buffer[offset++] = 0U;
+		ctx->xfr_buffer[offset++] = 0U;
 
-	memset(ctx->cmd_buffer + offset, 0, length);
+	/// Clear out the remaining buffer
+	memset(ctx->xfr_buffer + offset, 0, length);
 
-	ecp5_spi_xfr_jtag(target, ctx->data_buffer, ctx->cmd_buffer, length + offset, false);
-	memcpy(buffer, ctx->data_buffer + offset, length);
+	ecp5_spi_xfr_jtag(target, ctx->xfr_buffer, ctx->xfr_buffer, length + offset, false);
+	memcpy(buffer, ctx->xfr_buffer + offset, length);
 }
 
 static void ecp5_spi_write(target_s *const target, const uint16_t command, const target_addr_t address,
@@ -540,22 +540,22 @@ static void ecp5_spi_write(target_s *const target, const uint16_t command, const
 {
 	const ecp5_ctx_s *ctx = (ecp5_ctx_s *)target->priv;
 	size_t offset = 0U;
-	ctx->cmd_buffer[offset++] = SPI_FLASH_OPCODE(command);
+	ctx->xfr_buffer[offset++] = SPI_FLASH_OPCODE(command);
 	if ((command & SPI_FLASH_OPCODE_MODE_MASK) == SPI_FLASH_OPCODE_3B_ADDR) {
-		ctx->cmd_buffer[offset++] = (address & 0xff0000U) >> 16U;
-		ctx->cmd_buffer[offset++] = (address & 0x00ff00U) >> 8U;
-		ctx->cmd_buffer[offset++] = address & 0x0000ffU;
+		ctx->xfr_buffer[offset++] = (address & 0xff0000U) >> 16U;
+		ctx->xfr_buffer[offset++] = (address & 0x00ff00U) >> 8U;
+		ctx->xfr_buffer[offset++] = address & 0x0000ffU;
 	}
 
 	const size_t dummy_len = (command & SPI_FLASH_DUMMY_MASK) >> SPI_FLASH_DUMMY_SHIFT;
 	for (size_t dummy = 0U; dummy < dummy_len; ++dummy)
-		ctx->cmd_buffer[offset++] = 0U;
+		ctx->xfr_buffer[offset++] = 0U;
 
 	// Guard in the case buffer is `NULL`
 	if (buffer)
-		memcpy(ctx->cmd_buffer + offset, buffer, length);
+		memcpy(ctx->xfr_buffer + offset, buffer, length);
 
-	ecp5_spi_xfr_jtag(target, NULL, ctx->cmd_buffer, length + offset, true);
+	ecp5_spi_xfr_jtag(target, NULL, ctx->xfr_buffer, length + offset, true);
 }
 
 static void ecp5_spi_run_command(target_s *const target, const uint16_t command, const target_addr_t address)
