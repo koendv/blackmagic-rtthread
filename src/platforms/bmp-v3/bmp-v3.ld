@@ -30,12 +30,12 @@ MEMORY
 	 *
 	 * NB: SRAM on this part is mapped as:
 	 * SRAM1: 0x20000000 - 0x20030000
-	 * SRAM2: 0x20030000 - 0x20080000
-	 * SRAM3: 0x20080000 - 0x200c0000
+	 * SRAM2: 0x20030000 - 0x20040000
+	 * SRAM3: 0x20040000 - 0x200c0000
 	 *
 	 * SRAM2 is erased when the system is reset, all other SRAMs retain their contents.
 	 */
-	ram (rwx) : ORIGIN = 0x20080000, LENGTH = 512K
+	ram (rwx) : ORIGIN = 0x20040000, LENGTH = 512K
 }
 
 /* Include the platform common linker script. */
