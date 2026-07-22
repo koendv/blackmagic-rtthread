@@ -253,7 +253,6 @@ static void jtagtap_tdi_tdo_seq(
 	uint8_t *const data_out, const bool final_tms, const uint8_t *const data_in, size_t clock_cycles)
 {
 	gpio_clear(TMS_PORT, TMS_PIN);
-	gpio_clear(TDI_PORT, TDI_PIN);
 	if (target_clk_divider != UINT32_MAX)
 		jtagtap_tdi_tdo_seq_clk_delay(data_in, data_out, final_tms, clock_cycles);
 	else
