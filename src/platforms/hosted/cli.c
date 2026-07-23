@@ -540,8 +540,8 @@ int cl_execute(bmda_cli_options_s *opt)
 		target_flash_s *flash = target->flash;
 		for (size_t i = flash_regions - 1U; flash; flash = flash->next, --i) {
 			if (region == i) {
-				DEBUG_INFO("Flash Start: 0x%08" PRIx32 " length = 0x%zx blocksize 0x%zx\n", flash->start, flash->length,
-					flash->blocksize);
+				DEBUG_INFO("Flash Start: 0x%08" PRIx32 " length = 0x%08zx blocksize 0x%08zx\n", flash->start,
+					flash->length, flash->blocksize);
 				break;
 			}
 		}
