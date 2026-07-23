@@ -237,7 +237,8 @@
 #define ECP5_FLASH_BASE 0x04000000U
 
 // 4KiB Data buffer + 4 byte SPI command
-#define ECP5_XFR_BUFFER_SIZE 0x1004U
+#define ECP5_XFR_BUFFER_SIZE  0x1004U
+#define ECP5_SRAM_BUFFER_SIZE 0x1000U
 
 static const uint8_t ecp5_spi_unlock[2U] = {0xfeU, 0x68U};
 
@@ -340,7 +341,7 @@ void lattice_ecp5_handler(const uint8_t dev_index)
 			flash->length = devices[dev].bitstream_len;
 			flash->start = ECP5_SRAM_BASE;
 			flash->blocksize = flash->length;
-			flash->writesize = flash->length; // devices[dev].frame_len;
+			flash->writesize = ECP5_SRAM_BUFFER_SIZE;
 			flash->done = ecp5_sram_done;
 			flash->prepare = ecp5_sram_prepare;
 			flash->mass_erase = ecp5_sram_mass_erase;
@@ -690,17 +691,25 @@ static bool ecp5_sram_write(
 	target_flash_s *const flash, const target_addr_t dest, const void *const buffer, const size_t length)
 {
 	(void)dest;
+	(void)length;
 
 	const target_s *const target = flash->t;
 	const ecp5_ctx_s *const ctx = (ecp5_ctx_s *)target->priv;
 	const uint8_t dev_index = ctx->device_index;
 	const jtag_dev_s *const device = &jtag_devs[dev_index];
 
+	// Due to bmd wanting to do full `flash->writesize` writes, it pads the final write,
+	// however due to how the SRAM programming works, we can't do that, so we need to calculate
+	// the actual write length to use so we don't write garbage into the FPGA
+	const uint32_t write_length = flash->buf_addr_high - (flash->buf_addr_low & ~(flash->writesize - 1U));
+
 	uint8_t tap_out;
 	const uint8_t *const data_in = buffer;
-	for (size_t idx = 0U; idx < length; ++idx) {
+	for (size_t idx = 0U; idx < write_length; ++idx) {
 		const uint8_t tap_in = reverse_bits8(data_in[idx]);
-		jtag_proc.jtagtap_tdi_tdo_seq(&tap_out, (idx + 1U) == length && !device->dr_postscan, &tap_in, 8U);
+		// Only emit the final TMS if appropriate
+		jtag_proc.jtagtap_tdi_tdo_seq(&tap_out,
+			(idx + 1U) == write_length && !device->dr_postscan && write_length != ECP5_SRAM_BUFFER_SIZE, &tap_in, 8U);
 	}
 
 	return true;
