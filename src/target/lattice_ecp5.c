@@ -305,6 +305,7 @@ static void ecp5_spi_xfr_jtag(target_s *target, uint8_t *data_out, const uint8_t
 static bool ecp5_sram_prepare(target_flash_s *flash);
 static bool ecp5_sram_done(target_flash_s *flash);
 static bool ecp5_sram_erase(target_flash_s *flash, target_addr_t addr, size_t length);
+static bool ecp5_sram_mass_erase(target_flash_s *flash, platform_timeout_s *print_progess);
 static bool ecp5_sram_write(target_flash_s *flash, target_addr_t dest, const void *buffer, size_t length);
 
 void lattice_ecp5_handler(const uint8_t dev_index)
@@ -342,6 +343,7 @@ void lattice_ecp5_handler(const uint8_t dev_index)
 			flash->writesize = flash->length; // devices[dev].frame_len;
 			flash->done = ecp5_sram_done;
 			flash->prepare = ecp5_sram_prepare;
+			flash->mass_erase = ecp5_sram_mass_erase;
 			flash->erase = ecp5_sram_erase;
 			flash->write = ecp5_sram_write;
 
@@ -651,10 +653,19 @@ static bool ecp5_sram_done(target_flash_s *const flash)
 	return ecp5_check_error(target);
 }
 
-static bool ecp5_sram_erase(target_flash_s *const flash, const target_addr_t addr, const size_t length)
+static inline bool ecp5_sram_erase(target_flash_s *const flash, const target_addr_t addr, const size_t length)
 {
 	(void)addr;
 	(void)length;
+
+	if (addr == flash->start)
+		return ecp5_sram_mass_erase(flash, NULL);
+	return true;
+}
+
+static bool ecp5_sram_mass_erase(target_flash_s *flash, platform_timeout_s *print_progess)
+{
+	(void)print_progess;
 
 	const target_s *const target = flash->t;
 	const ecp5_ctx_s *const ctx = (ecp5_ctx_s *)target->priv;
