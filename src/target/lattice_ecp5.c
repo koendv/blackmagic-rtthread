@@ -302,6 +302,7 @@ static void ecp5_spi_write(
 static void ecp5_spi_run_command(target_s *target, uint16_t command, target_addr_t address);
 static void ecp5_spi_xfr_jtag(target_s *target, uint8_t *data_out, const uint8_t *data_in, size_t length, bool inhibit);
 
+static bool ecp5_sram_prepare(target_flash_s *flash);
 static bool ecp5_sram_done(target_flash_s *flash);
 static bool ecp5_sram_erase(target_flash_s *flash, target_addr_t addr, size_t length);
 static bool ecp5_sram_write(target_flash_s *flash, target_addr_t dest, const void *buffer, size_t length);
@@ -340,6 +341,7 @@ void lattice_ecp5_handler(const uint8_t dev_index)
 			flash->blocksize = flash->length;
 			flash->writesize = flash->length; // devices[dev].frame_len;
 			flash->done = ecp5_sram_done;
+			flash->prepare = ecp5_sram_prepare;
 			flash->erase = ecp5_sram_erase;
 			flash->write = ecp5_sram_write;
 
@@ -608,13 +610,39 @@ static void ecp5_spi_xfr_jtag(target_s *const target, uint8_t *const data_out, c
 	jtagtap_return_idle(1U);
 }
 
+static bool ecp5_sram_prepare(target_flash_s *const flash)
+{
+	target_s *const target = flash->t;
+	ecp5_ctx_s *const ctx = (ecp5_ctx_s *)target->priv;
+	const uint8_t dev_index = ctx->device_index;
+	const jtag_dev_s *const device = &jtag_devs[dev_index];
+
+	if (flash->operation == FLASH_OPERATION_WRITE) {
+		// Write bitstream to SRAM
+		jtag_dev_write_ir(dev_index, CMD_LSC_BITSTREAM_BURST);
+		jtag_proc.jtagtap_cycle(false, false, 50U);
+
+		/* Switch into Shift-DR */
+		jtagtap_shift_dr();
+		/* clock out 1's till we hit the right device in the chain */
+		jtag_proc.jtagtap_tdi_seq(false, ones, device->dr_prescan);
+	}
+	return true;
+}
+
 static bool ecp5_sram_done(target_flash_s *const flash)
 {
 	target_s *const target = flash->t;
 	ecp5_ctx_s *const ctx = (ecp5_ctx_s *)target->priv;
 	const uint8_t dev_index = ctx->device_index;
+	const jtag_dev_s *const device = &jtag_devs[dev_index];
 
 	if (flash->operation == FLASH_OPERATION_WRITE) {
+		/* Make sure we're in Exit1-DR having clocked out 1's for any more devices on the chain */
+		jtag_proc.jtagtap_tdi_seq(true, ones, device->dr_postscan);
+		/* Now go through Update-DR and back to Idle */
+		jtagtap_return_idle(1U);
+
 		// Exit configuration mode
 		jtag_dev_write_ir(dev_index, CMD_ISC_DISABLE);
 		jtag_proc.jtagtap_cycle(false, false, 50U);
@@ -657,26 +685,12 @@ static bool ecp5_sram_write(
 	const uint8_t dev_index = ctx->device_index;
 	const jtag_dev_s *const device = &jtag_devs[dev_index];
 
-	// Write bitstream to SRAM
-	jtag_dev_write_ir(dev_index, CMD_LSC_BITSTREAM_BURST);
-	jtag_proc.jtagtap_cycle(false, false, 50U);
-
-	/* Switch into Shift-DR */
-	jtagtap_shift_dr();
-	/* Now we're in Shift-DR, clock out 1's till we hit the right device in the chain */
-	jtag_proc.jtagtap_tdi_seq(false, ones, device->dr_prescan);
-
 	uint8_t tap_out;
 	const uint8_t *const data_in = buffer;
 	for (size_t idx = 0U; idx < length; ++idx) {
 		const uint8_t tap_in = reverse_bits8(data_in[idx]);
 		jtag_proc.jtagtap_tdi_tdo_seq(&tap_out, (idx + 1U) == length && !device->dr_postscan, &tap_in, 8U);
 	}
-
-	/* Make sure we're in Exit1-DR having clocked out 1's for any more devices on the chain */
-	jtag_proc.jtagtap_tdi_seq(true, ones, device->dr_postscan);
-	/* Now go through Update-DR and back to Idle */
-	jtagtap_return_idle(1U);
 
 	return true;
 }
