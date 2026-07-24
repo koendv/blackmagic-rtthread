@@ -218,10 +218,16 @@ extern int hwversion;
 #define AUX_VBAT      GPIO0
 
 /* SPI bus definitions */
-#define AUX_SPI         SPI2
-#define EXT_SPI         SPI1
-#define EXT_SPI_CS_PORT GPIOA
-#define EXT_SPI_CS      GPIO4
+#define AUX_SPI           SPI2
+#define EXT_SPI           SPI1
+#define EXT_SPI_SCLK_PORT GPIOA
+#define EXT_SPI_SCLK_PIN  GPIO5
+#define EXT_SPI_CS_PORT   GPIOA
+#define EXT_SPI_CS_PIN    GPIO4
+#define EXT_SPI_POCI_PORT GPIOA
+#define EXT_SPI_POCI_PIN  GPIO6
+#define EXT_SPI_PICO_PORT GPIOA
+#define EXT_SPI_PICO_PIN  GPIO7
 
 #define SWD_CR       GPIO_CRL(SWDIO_PORT)
 #define SWD_CR_SHIFT (4U << 2U)

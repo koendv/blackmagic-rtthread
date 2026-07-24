@@ -500,7 +500,7 @@ bool platform_spi_chip_select(const uint8_t device_select)
 		break;
 	case SPI_DEVICE_EXT_FLASH:
 		port = EXT_SPI_CS_PORT;
-		pin = EXT_SPI_CS;
+		pin = EXT_SPI_CS_PIN;
 		break;
 	case SPI_DEVICE_SDCARD:
 		pin = AUX_SDCS;
