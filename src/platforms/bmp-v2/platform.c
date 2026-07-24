@@ -2,7 +2,7 @@
  * This file is part of the Black Magic Debug project.
  *
  * Copyright (C) 2011 Black Sphere Technologies Ltd.
- * Copyright (C) 2022-2025 1BitSquared <info@1bitsquared.com>
+ * Copyright (C) 2022-2026 1BitSquared <info@1bitsquared.com>
  * Written by Gareth McMullin <gareth@blacksphere.co.nz>
  * Modified by Piotr Esden-Tempski <piotr@1bitsquared.com>
  * Modified by Rachel Mant <git@dragonmux.network>
@@ -168,7 +168,7 @@ void platform_init(void)
 	gpio_set_mode(USB_PU_PORT, GPIO_MODE_INPUT, GPIO_CNF_INPUT_FLOAT, USB_PU_PIN);
 
 	gpio_set_mode(JTAG_PORT, GPIO_MODE_OUTPUT_50_MHZ, GPIO_CNF_OUTPUT_PUSHPULL, TMS_DIR_PIN | TCK_PIN | TDI_PIN);
-	gpio_set_mode(JTAG_PORT, GPIO_MODE_OUTPUT_50_MHZ, GPIO_CNF_INPUT_FLOAT, TMS_PIN);
+	gpio_set_mode(JTAG_PORT, GPIO_MODE_OUTPUT_50_MHZ, GPIO_CNF_OUTPUT_OPENDRAIN, TMS_PIN);
 	gpio_set_mode(JTAG_PORT, GPIO_MODE_INPUT, GPIO_CNF_INPUT_FLOAT, TDO_PIN);
 
 	/* This needs some fixing... */
@@ -458,8 +458,11 @@ bool platform_spi_init(const spi_bus_e bus)
 	if (bus == SPI_BUS_EXTERNAL) {
 		rcc_periph_clock_enable(RCC_SPI1);
 		rcc_periph_reset_pulse(RST_SPI1);
-		gpio_set_mode(TCK_PORT, GPIO_MODE_OUTPUT_50_MHZ, GPIO_CNF_OUTPUT_ALTFN_PUSHPULL, TCK_PIN);
-		gpio_set_mode(TDI_PORT, GPIO_MODE_OUTPUT_50_MHZ, GPIO_CNF_OUTPUT_ALTFN_PUSHPULL, TDI_PIN);
+		gpio_set_mode(EXT_SPI_SCLK_PORT, GPIO_MODE_OUTPUT_50_MHZ, GPIO_CNF_OUTPUT_ALTFN_PUSHPULL, EXT_SPI_SCLK_PIN);
+		gpio_set_mode(EXT_SPI_CS_PORT, GPIO_MODE_OUTPUT_50_MHZ, GPIO_CNF_OUTPUT_PUSHPULL, EXT_SPI_CS_PIN);
+		gpio_set_mode(EXT_SPI_POCI_PORT, GPIO_MODE_INPUT, GPIO_CNF_INPUT_FLOAT, EXT_SPI_POCI_PIN);
+		gpio_set_mode(EXT_SPI_PICO_PORT, GPIO_MODE_OUTPUT_50_MHZ, GPIO_CNF_OUTPUT_ALTFN_PUSHPULL, EXT_SPI_PICO_PIN);
+		gpio_set(EXT_SPI_CS_PORT, EXT_SPI_CS_PIN);
 		gpio_set(TCK_DIR_PORT, TCK_DIR_PIN);
 		gpio_set(TMS_DIR_PORT, TMS_DIR_PIN);
 	} else {
@@ -481,7 +484,9 @@ bool platform_spi_deinit(spi_bus_e bus)
 	if (bus == SPI_BUS_EXTERNAL) {
 		rcc_periph_clock_disable(RCC_SPI1);
 		gpio_set_mode(TCK_PORT, GPIO_MODE_OUTPUT_50_MHZ, GPIO_CNF_OUTPUT_PUSHPULL, TCK_PIN);
+		gpio_set_mode(TMS_PORT, GPIO_MODE_OUTPUT_50_MHZ, GPIO_CNF_OUTPUT_OPENDRAIN, TMS_PIN);
 		gpio_set_mode(TDI_PORT, GPIO_MODE_OUTPUT_50_MHZ, GPIO_CNF_OUTPUT_PUSHPULL, TDI_PIN);
+		gpio_set_mode(TDO_PORT, GPIO_MODE_INPUT, GPIO_CNF_INPUT_FLOAT, TDO_PIN);
 		platform_target_clk_output_enable(false);
 	} else
 		rcc_periph_clock_disable(RCC_SPI2);
