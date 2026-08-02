@@ -37,6 +37,7 @@ however below is a brief guide for both the firmware and BMDA.
 ### Black Magic Debug Firmware
 
 When built as firmware and put on a probe, the project is used like as follows:
+(arm-none-eabi-gdb is deprecated in Ubuntu and Debian, Use gdb-multiarch instead)
 
 ```console
 > arm-none-eabi-gdb gpio.elf
@@ -95,7 +96,7 @@ displayed and the program exits. Add `-s <serial>` to the next invocation to sel
 
 For the setup from the sample session above:
 
-In another terminal:
+In another terminal, run `blackmagic` from `build/`:
 
 ```console
 > blackmagic
