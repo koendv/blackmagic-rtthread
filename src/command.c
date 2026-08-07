@@ -121,11 +121,17 @@ const command_s cmd_list[] = {
 #endif
 #ifdef PLATFORM_HAS_TRACESWO
 #if SWO_ENCODING == 1
-	{"swo", cmd_swo, "Start SWO capture, Manchester mode: <enable|disable> [decode [CHANNEL_NR ...]]"},
+	{"swo", cmd_swo,
+		"Start SWO capture, Manchester mode: [enable [decode [CHANNEL_NR ...]]|disable"
+		"|log|[top|graph] <low_addr> <high_addr> <bucket_bits> <interval_seconds>|selftest]"},
 #elif SWO_ENCODING == 2
-	{"swo", cmd_swo, "Start SWO capture, UART mode: <enable|disable> [BAUDRATE] [decode [CHANNEL_NR ...]]"},
+	{"swo", cmd_swo,
+		"Start SWO capture, UART mode: [enable [BAUDRATE] [decode [CHANNEL_NR ...]]|disable"
+		"|log|[top|graph] <low_addr> <high_addr> <bucket_bits> <interval_seconds>|selftest]"},
 #elif SWO_ENCODING == 3
-	{"swo", cmd_swo, "Start SWO capture: <enable|disable> [manchester|uart] [BAUDRATE] [decode [CHANNEL_NR ...]]"},
+	{"swo", cmd_swo,
+		"Start SWO capture: [enable [manchester|uart] [BAUDRATE] [decode [CHANNEL_NR ...]]|disable"
+		"|log|[top|graph] <low_addr> <high_addr> <bucket_bits> <interval_seconds>|selftest]"},
 #endif
 	{"traceswo", cmd_swo, "Deprecated: use swo instead"},
 #endif
@@ -659,6 +665,81 @@ static bool cmd_rtt(target_s *target, int argc, const char **argv)
 #endif
 
 #ifdef PLATFORM_HAS_TRACESWO
+
+static bool cmd_swo_log(int argc, const char **argv)
+{
+	uint8_t decode_arg = 0U;
+
+	/* DWT tracing over SWO */
+	if (argc > decode_arg && !strncmp(argv[decode_arg], "log", strlen(argv[decode_arg]))) {
+		const dwt_top_settings_t disable_top = {0};
+		swo_itm_decode_set_top(&disable_top);
+		++decode_arg;
+	}
+
+	if (argc > decode_arg &&
+		(!strncmp(argv[decode_arg], "top", strlen(argv[decode_arg])) ||
+			!strncmp(argv[decode_arg], "graph", strlen(argv[decode_arg])))) {
+		const bool graph = argv[decode_arg][0] == 'g';
+		if (decode_arg + 4 >= argc) {
+			gdb_out("swo top|graph too few arguments\n");
+			return false;
+		}
+		const uint32_t low = strtoul(argv[decode_arg + 1], NULL, 0);
+		const uint32_t high = strtoul(argv[decode_arg + 2], NULL, 0);
+		const uint32_t bits = strtoul(argv[decode_arg + 3], NULL, 0);
+		const uint32_t seconds = strtoul(argv[decode_arg + 4], NULL, 0);
+		decode_arg += 5;
+		if (bits > 31U) {
+			gdb_out("swo top|graph bits 0..31\n");
+			return false;
+		}
+		const dwt_top_settings_t top_settings = {
+			.low_addr = low,
+			.high_addr = high,
+			.bucket_bits = (uint8_t)bits,
+			.interval_seconds = seconds,
+			.graph = graph,
+		};
+		dwt_top_error_e top_err = swo_itm_decode_set_top(&top_settings);
+		if (top_err != dwt_top_err_none) {
+			switch (top_err) {
+			case dwt_top_err_bits:
+				gdb_out("swo error: bits must be 0..31\n");
+				break;
+			case dwt_top_err_range:
+				gdb_out("swo error: high < low\n");
+				break;
+			case dwt_top_err_too_many_buckets:
+				gdb_out("swo error: use fewer bits or smaller range\n");
+				break;
+			case dwt_top_err_no_memory:
+				gdb_out("swo error: out of memory\n");
+				break;
+			default:
+				gdb_out("swo top configuration failed\n");
+				break;
+			}
+			return false;
+		}
+	}
+
+	/* ITM/DWT selftest */
+	if (argc > decode_arg && !strncmp(argv[decode_arg], "selftest", strlen(argv[decode_arg]))) {
+		/* feed known good packets */
+		swo_itm_decode_selftest();
+		++decode_arg;
+	}
+
+	/* unparsed argument */
+	if (argc > decode_arg) {
+		gdb_outf("what? %s\n", argv[decode_arg]);
+		return false;
+	}
+
+	return true;
+}
+
 static bool cmd_swo_enable(int argc, const char **argv)
 {
 	/* Set up which mode we're going to default to */
@@ -704,19 +785,32 @@ static bool cmd_swo_enable(int argc, const char **argv)
 #endif
 	/* Check if `decode` has been given and if it has, enable ITM decoding */
 	if (argc > decode_arg && !strncmp(argv[decode_arg], "decode", strlen(argv[decode_arg]))) {
-		/* Check if there are specific ITM streams to enable and build a bitmask of them */
-		if (argc > decode_arg + 1) {
+		/* Check if the next token is a ITM stream number, and if so, build a bitmask of the given streams */
+		if (argc > decode_arg + 1 && argv[decode_arg + 1][0] >= '0' && argv[decode_arg + 1][0] <= '9') {
 			/* For each of the specified streams */
-			for (size_t i = decode_arg + 1U; i < (size_t)argc; ++i) {
+			size_t i = decode_arg + 1U;
+			for (; i < (size_t)argc; ++i) {
+				if (argv[i][0] < '0' || argv[i][0] > '9')
+					break;
 				/* Figure out which the next one is */
 				const uint32_t stream = strtoul(argv[i], NULL, 0);
 				/* If it's a valid ITM stream number, set it in the mask */
 				if (stream < 32U)
 					itm_stream_mask |= 1U << stream;
 			}
-		} else
-			/* Decode all ITM streams if non given */
+			/* Advance past the consumed stream numbers, whether or not a trailing keyword follows */
+			decode_arg = i;
+		} else {
+			/* Decode all ITM streams if none given */
 			itm_stream_mask = 0xffffffffU;
+			++decode_arg;
+		}
+	}
+
+	/* unparsed argument */
+	if (argc > decode_arg) {
+		gdb_outf("what? %s\n", argv[decode_arg]);
+		return false;
 	}
 
 	/* Now enable SWO data recovery */
@@ -741,15 +835,18 @@ static bool cmd_swo_disable(void)
 static bool cmd_swo(target_s *target, int argc, const char **argv)
 {
 	(void)target;
-	bool enable_swo = false;
-	if (argc >= 2 && !parse_enable_or_disable(argv[1], &enable_swo)) {
-		gdb_out("Usage: traceswo <enable|disable> [2000000] [decode [0 1 3 31]]\n");
-		return false;
-	}
 
-	if (enable_swo)
+	if (argc < 2)
+		return cmd_swo_disable();
+
+	const size_t arg_length = strlen(argv[1]);
+	if (arg_length && !strncmp(argv[1], "enable", arg_length))
 		return cmd_swo_enable(argc - 1, argv + 1);
-	return cmd_swo_disable();
+
+	if (arg_length && !strncmp(argv[1], "disable", arg_length))
+		return cmd_swo_disable();
+
+	return cmd_swo_log(argc - 1, argv + 1);
 }
 #endif
 
