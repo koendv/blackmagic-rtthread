@@ -871,6 +871,11 @@ bool mm32l0xx_probe(target_s *const target)
 		return false;
 	}
 	switch (mm32_id) {
+	case 0x8c4350d1U:
+		target->driver = "MM32F0010";
+		flash_kbyte = 16;
+		ram_kbyte = 2;
+		break;
 	case 0xcc568091U:
 		target->driver = "MM32L07x";
 		flash_kbyte = 128;
