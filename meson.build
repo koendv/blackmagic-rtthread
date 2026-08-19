@@ -32,7 +32,7 @@
 project(
 	'Black Magic Debug',
 	'c',
-	version: '2.1.0-rc1',
+	version: '2.1.0',
 	license: 'GPL-3.0-or-later OR BSD-3-Clause OR MIT',
 	# license_files: ['COPYING', 'COPYING-BSD', 'COPYING-MIT'], # Only available in meson 1.1.0
 	default_options: [
