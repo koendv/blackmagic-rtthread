@@ -250,6 +250,9 @@ struct adiv5_access_port {
 	uint32_t csw;
 	uint32_t ap_cortexm_demcr; /* Copy of demcr when starting */
 
+	target_addr_t mtb_base; /* Micro Trace Buffer base address, 0 if no mtb. */
+	target_addr_t mtb_sram; /* MTB sram base address, 0 if not yet resolved or no mtb. */
+
 	/* AP designer and partno */
 	uint16_t designer_code;
 	uint16_t partno;
@@ -278,6 +281,7 @@ typedef enum arm_arch {
 	aa_cortexr,
 	aa_rom_table,
 	aa_access_port,
+	aa_mtb,
 	aa_end
 } arm_arch_e;
 

@@ -38,6 +38,7 @@
 #include "cortex.h"
 #include "cortex_internal.h"
 #include "cortexm.h"
+#include "cortexm_mtb.h"
 #include "gdb_reg.h"
 #include "command.h"
 #include "gdb_packet.h"
@@ -70,6 +71,7 @@ const command_s cortexm_cmd_list[] = {
 	{"dwt", cortexm_dwt,
 		"DWT trace over SWO: [enable|disable|status|clear|0..31|exception|event|"
 		"lts <0..3>|gts <0..3>|timestamp]..."},
+	{"mtb", cortexm_mtb, "Micro Trace Buffer: [status|dump|size]"},
 	{NULL, NULL, NULL},
 };
 
@@ -265,6 +267,11 @@ void cortexm_demcr_write(target_s *target, uint32_t demcr)
 	cortexm_priv_s *priv = (cortexm_priv_s *)target->priv;
 	priv->demcr = demcr;
 	target_mem32_write32(target, CORTEXM_DEMCR, demcr);
+}
+
+void cortexm_mtb_probe(adiv5_access_port_s *const ap, const target_addr_t base_address)
+{
+	ap->mtb_base = base_address;
 }
 
 bool cortexm_probe(adiv5_access_port_s *ap)

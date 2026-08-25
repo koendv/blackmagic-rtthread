@@ -120,8 +120,7 @@ static const arm_coresight_component_s arm_component_lut[] = {
 	{0x924, 0x13, 0, aa_nosupport, cidc_unknown, ARM_COMPONENT_STR("Cortex-M3 ETM", "(Embedded Trace)")},
 	{0x925, 0x13, 0, aa_nosupport, cidc_unknown, ARM_COMPONENT_STR("Cortex-M4 ETM", "(Embedded Trace)")},
 	{0x930, 0x13, 0, aa_nosupport, cidc_unknown, ARM_COMPONENT_STR("Cortex-R4 ETM", "(Embedded Trace)")},
-	{0x932, 0x31, 0x0a31, aa_nosupport, cidc_unknown,
-		ARM_COMPONENT_STR("CoreSight MTB-M0+", "(Simple Execution Trace)")},
+	{0x932, 0x31, 0x0a31, aa_mtb, cidc_unknown, ARM_COMPONENT_STR("CoreSight MTB-M0+", "(Simple Execution Trace)")},
 	{0x941, 0x00, 0, aa_nosupport, cidc_unknown,
 		ARM_COMPONENT_STR("CoreSight TPIU-Lite", "(Trace Port Interface Unit)")},
 	{0x950, 0x13, 0, aa_nosupport, cidc_unknown, ARM_COMPONENT_STR("Cortex-A9 PTM", "(Program Trace Macrocell)")},
@@ -151,12 +150,12 @@ static const arm_coresight_component_s arm_component_lut[] = {
 	{0xd20, 0x00, 0x2a04, aa_cortexm, cidc_gipc, ARM_COMPONENT_STR("Cortex-M23", "(System Control Space)")},
 	{0xd20, 0x11, 0, aa_nosupport, cidc_dc, ARM_COMPONENT_STR("Cortex-M23", "(Trace Port Interface Unit)")},
 	{0xd20, 0x13, 0, aa_nosupport, cidc_dc, ARM_COMPONENT_STR("Cortex-M23", "(Embedded Trace)")},
-	{0xd20, 0x31, 0x0a31, aa_nosupport, cidc_dc, ARM_COMPONENT_STR("Cortex-M23", "(Micro Trace Buffer)")},
+	{0xd20, 0x31, 0x0a31, aa_mtb, cidc_dc, ARM_COMPONENT_STR("Cortex-M23", "(Micro Trace Buffer)")},
 	{0xd20, 0x00, 0x1a02, aa_nosupport, cidc_dc, ARM_COMPONENT_STR("Cortex-M23", "(Data Watchpoint and Trace)")},
 	{0xd20, 0x00, 0x1a03, aa_nosupport, cidc_dc, ARM_COMPONENT_STR("Cortex-M23", "(Breakpoint Unit)")},
 	{0xd20, 0x14, 0x1a14, aa_nosupport, cidc_dc, ARM_COMPONENT_STR("Cortex-M23", "(Cross Trigger)")},
 	{0xd21, 0x00, 0x2a04, aa_cortexm, cidc_gipc, ARM_COMPONENT_STR("Cortex-M33", "(System Control Space)")},
-	{0xd21, 0x31, 0x0a31, aa_nosupport, cidc_dc, ARM_COMPONENT_STR("Cortex-M33", "(Micro Trace Buffer)")},
+	{0xd21, 0x31, 0x0a31, aa_mtb, cidc_dc, ARM_COMPONENT_STR("Cortex-M33", "(Micro Trace Buffer)")},
 	{0xd21, 0x43, 0x1a01, aa_nosupport, cidc_dc, ARM_COMPONENT_STR("Cortex-M33", "(Instrumentation Trace Macrocell)")},
 	{0xd21, 0x00, 0x1a02, aa_nosupport, cidc_dc, ARM_COMPONENT_STR("Cortex-M33", "(Data Watchpoint and Trace)")},
 	{0xd21, 0x00, 0x1a03, aa_nosupport, cidc_dc, ARM_COMPONENT_STR("Cortex-M33", "(Breakpoint Unit)")},
@@ -170,7 +169,7 @@ static const arm_coresight_component_s arm_component_lut[] = {
 	{0xd22, 0x13, 0x4a13, aa_nosupport, cidc_dc, ARM_COMPONENT_STR("Cortex-M55", "(Embedded Trace)")},
 	{0xd22, 0x16, 0x0a06, aa_nosupport, cidc_dc, ARM_COMPONENT_STR("Cortex-M55", "(Performance Monitoring Unit)")},
 	{0xd22, 0x14, 0x1a14, aa_nosupport, cidc_dc, ARM_COMPONENT_STR("Cortex-M55", "(Cross Trigger)")},
-	{0x132, 0x31, 0x0a31, aa_nosupport, cidc_dc, ARM_COMPONENT_STR("STAR-MC1 MTB", "(Execution Trace)")},
+	{0x132, 0x31, 0x0a31, aa_mtb, cidc_dc, ARM_COMPONENT_STR("STAR-MC1 MTB", "(Execution Trace)")},
 	{0x132, 0x43, 0x1a01, aa_nosupport, cidc_dc, ARM_COMPONENT_STR("STAR-MC1 ITM", "(Instrumentation Trace Module)")},
 	{0x132, 0x00, 0x1a02, aa_nosupport, cidc_dc, ARM_COMPONENT_STR("STAR-MC1 DWT", "(Data Watchpoint and Trace)")},
 	{0x132, 0x00, 0x1a03, aa_nosupport, cidc_dc, ARM_COMPONENT_STR("STAR-MC1 BPU", "(Breakpoint Unit)")},
@@ -873,6 +872,10 @@ void adi_ap_component_probe(
 		case aa_cortexr:
 			DEBUG_INFO("%s-> cortexr_probe\n", indent + 1);
 			cortexr_probe(ap, base_address);
+			break;
+		case aa_mtb:
+			DEBUG_INFO("%s-> cortexm_mtb_probe\n", indent + 1);
+			cortexm_mtb_probe(ap, base_address);
 			break;
 		/* Handle when the component is a CoreSight component ROM table */
 		case aa_rom_table:
