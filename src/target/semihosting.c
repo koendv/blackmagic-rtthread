@@ -20,9 +20,7 @@
 #include <sys/stat.h>
 #include <msh.h>
 
-#include "settings.h"
-#include "serials.h"
-#include "usb_cdc0.h"
+#include "semihosting_port.h"
 
 #define STDIN_FILENO  0 /* standard input file descriptor */
 #define STDOUT_FILENO 1 /* standard output file descriptor */
@@ -250,7 +248,7 @@ int32_t semihosting_open(target_s *const target, const semihosting_s *const requ
 	}
 
 	/* a real file */
-	if (!settings.fileio_enable) {
+	if (!semihosting_fileio_enabled()) {
 		LOG_E("open: '%s' file i/o disabled in settings", file_name);
 		target->tc->gdb_errno = TARGET_EACCES;
 		return -1;
@@ -317,7 +315,7 @@ int32_t semihosting_writec(target_s *const target, const semihosting_s *const re
 		target->tc->gdb_errno = TARGET_EFAULT;
 		return SEMIHOSTING_UNDEFINED;
 	}
-	cdc0_write(&ch, 1);
+	semihosting_putstr(&ch, 1);
 	return SEMIHOSTING_UNDEFINED;
 }
 
@@ -338,7 +336,7 @@ int32_t semihosting_write0(target_s *const target, const semihosting_s *const re
 			target->tc->gdb_errno = TARGET_EFAULT;
 			return SEMIHOSTING_UNDEFINED;
 		}
-		cdc0_write(&ch, 1);
+		semihosting_putstr(&ch, 1);
 	}
 	return SEMIHOSTING_UNDEFINED;
 }
@@ -380,7 +378,7 @@ int32_t semihosting_write(target_s *const target, const semihosting_s *const req
 		}
 
 		if (is_console) {
-			cdc0_write(buffer, len);
+			semihosting_putstr(buffer, len);
 			total_written += len;
 			continue;
 		}
@@ -610,7 +608,7 @@ int32_t semihosting_remove(target_s *const target, const semihosting_s *const re
 {
 	char path[SEMIHOSTING_PATH_MAX];
 
-	if (!settings.fileio_enable) {
+	if (!semihosting_fileio_enabled()) {
 		LOG_E("remove: file i/o disabled in settings");
 		target->tc->gdb_errno = TARGET_EACCES;
 		return -1;
@@ -634,7 +632,7 @@ int32_t semihosting_rename(target_s *const target, const semihosting_s *const re
 	char old_path[SEMIHOSTING_PATH_MAX];
 	char new_path[SEMIHOSTING_PATH_MAX];
 
-	if (!settings.fileio_enable) {
+	if (!semihosting_fileio_enabled()) {
 		LOG_E("rename: file i/o disabled in settings");
 		target->tc->gdb_errno = TARGET_EACCES;
 		return -1;
@@ -680,7 +678,7 @@ int32_t semihosting_system(target_s *const target, const semihosting_s *const re
 	const target_addr_t buffer_taddr = request->params[0];
 	const size_t buffer_length = request->params[1];
 
-	if (!settings.shell_enable) {
+	if (!semihosting_shell_enabled()) {
 		LOG_E("system: shell disabled in settings");
 		target->tc->gdb_errno = TARGET_EACCES;
 		return -1;
