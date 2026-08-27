@@ -45,6 +45,16 @@
 #include "platform.h"
 #include "maths_utils.h"
 
+#ifdef ENABLE_MEMWATCH
+#include "memwatch.h"
+#endif
+
+#include "cortexm_dwt.h"
+
+#ifdef ENABLE_MTB
+#include "cortexm_mtb.h"
+#endif
+
 #include <assert.h>
 
 /* This is the size (in 32 bits integers) you must allocate when reading cortem registers */
@@ -54,6 +64,15 @@ static bool cortexm_vector_catch(target_s *target, int argc, const char **argv);
 
 const command_s cortexm_cmd_list[] = {
 	{"vector_catch", cortexm_vector_catch, "Catch exception vectors"},
+#ifdef ENABLE_MEMWATCH
+	{"memwatch", cortexm_memwatch, "Read memory while target running: [/t] [[NAME] [/d|/u|/f|/f[0..9]|/x] ADDRESS]..."},
+#endif
+	{"dwt", cortexm_dwt,
+		"DWT trace over SWO: [enable|disable|status|clear|0..31|exception|event|"
+		"lts <0..3>|gts <0..3>|timestamp]..."},
+#ifdef ENABLE_MTB
+	{"mtb", cortexm_mtb, "Micro Trace Buffer: [status|dump|size]"},
+#endif
 	{NULL, NULL, NULL},
 };
 
@@ -249,6 +268,11 @@ void cortexm_demcr_write(target_s *target, uint32_t demcr)
 	cortexm_priv_s *priv = (cortexm_priv_s *)target->priv;
 	priv->demcr = demcr;
 	target_mem32_write32(target, CORTEXM_DEMCR, demcr);
+}
+
+void cortexm_mtb_probe(adiv5_access_port_s *const ap, const target_addr_t base_address)
+{
+	ap->mtb_base = base_address;
 }
 
 bool cortexm_probe(adiv5_access_port_s *ap)
