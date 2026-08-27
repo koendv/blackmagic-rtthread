@@ -23,6 +23,9 @@
 #ifndef PLATFORMS_COMMON_SWO_H
 #define PLATFORMS_COMMON_SWO_H
 
+#include <stdint.h>
+#include <stdbool.h>
+
 #if !defined(NO_LIBOPENCM3)
 #include <libopencm3/usb/usbd.h>
 #endif
@@ -51,12 +54,41 @@ void bmd_usart_set_baudrate(uint32_t usart, uint32_t baud_rate);
 /* USB callback for the raw data endpoint to ask for a new buffer of data */
 void swo_send_buffer(usbd_device *dev, uint8_t ep);
 
+#endif /* !NO_LIBOPENCM3 */
+
 /* Set a bitmask of SWO ITM streams to be decoded */
 void swo_itm_decode_set_mask(uint32_t mask);
 
 /* Decode a new block of ITM data from SWO */
 uint16_t swo_itm_decode(const uint8_t *data, uint16_t len);
 
-#endif /* !NO_LIBOPENCM3 */
+/* selftest: replay known-good packet vectors through the decoder */
+void swo_itm_decode_selftest(void);
+
+typedef struct {
+	uint32_t low_addr;         /* dwt top: low address of sampled range */
+	uint32_t high_addr;        /* dwt top: high address of sampled range */
+	uint8_t bucket_bits;       /* dwt top: bucket size, in address bits */
+	uint32_t interval_seconds; /* dwt top: display interval, in seconds */
+	bool graph;                /* dwt top: vt100 graph output enable */
+} dwt_top_settings_t;
+
+typedef enum {
+	dwt_top_err_none = 0,         /* no error */
+	dwt_top_err_bits,             /* bucket_bits out of range (must be 0..31) */
+	dwt_top_err_range,            /* high_addr not greater than low_addr, once aligned to bucket size */
+	dwt_top_err_too_many_buckets, /* range / bucket size exceeds DWT_TOP_MAX_BUCKETS */
+	dwt_top_err_no_memory,        /* bucket allocation failed */
+} dwt_top_error_e;
+
+/*
+   histogram of PC counter samples.
+   - display PC from low_addr to high_addr in buckets of 2**bucket_bits each.
+   - show new histogram every interval_seconds seconds
+   - if graph, output vt100 graphics
+ */
+dwt_top_error_e swo_itm_decode_set_top(const dwt_top_settings_t *settings);
+
+extern dwt_top_settings_t dwt_top;
 
 #endif /* PLATFORMS_COMMON_SWO_H */
