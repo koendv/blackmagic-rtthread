@@ -40,6 +40,9 @@ static void jtagtap_cycle(bool tms, bool tdi, size_t clock_cycles);
 
 void jtagtap_init(void)
 {
+#ifdef JTAGTAP_PLATFORM_INIT
+        jtagtap_platform_init();
+#endif
 	platform_target_clk_output_enable(true);
 	TMS_SET_MODE();
 

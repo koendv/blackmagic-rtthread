@@ -81,6 +81,12 @@ bool gdb_packet_get_ack(uint32_t timeout);
 
 char *gdb_packet_buffer(void);
 
+/* non-blocking, stateful processing of gdb packet */
+void gdb_packet_process(void);
+
+/* reset gdb_packet_process */
+void gdb_packet_reset(void);
+
 /* Convenience wrappers */
 void gdb_put_packet(const char *preamble, size_t preamble_size, const char *data, size_t data_size, bool hex_data);
 
