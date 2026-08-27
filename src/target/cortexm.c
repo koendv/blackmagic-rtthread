@@ -287,6 +287,8 @@ bool cortexm_probe(adiv5_access_port_s *ap)
 	target->check_error = cortex_check_error;
 	target->mem_read = cortexm_mem_read;
 	target->mem_write = cortexm_mem_write;
+	/* All Cortex-M parts have an AHB-AP guaranteeing non-halting memory access, except where noted below */
+	target->target_options |= TOPT_NON_HALTING_MEM_IO;
 
 	target->driver = "ARM Cortex-M";
 

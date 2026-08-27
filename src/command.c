@@ -132,7 +132,7 @@ static const command_s cmd_list[] = {
 	{"rtt", cmd_rtt,
 		"[enable|disable|detect|status|channel [0..15 ...]|ident [STR]|cblock|ram [RAM_START RAM_END]|poll [MAXMS "
 		"MINMS "
-		"MAXERR]]"},
+		"MAXERR]]|halt [enable|disable|auto]"},
 #endif
 #ifdef PLATFORM_HAS_TRACESWO
 #if SWO_ENCODING == 1
@@ -651,7 +651,7 @@ static bool cmd_rtt_status(target_s *const target)
 	gdb_outf("RTT %s, control block %sfound, ident: %s\n", rtt_enabled ? "enabled" : "disabled",
 		rtt_found ? "" : "not ", rtt_ident[0] == '\0' ? "off" : rtt_ident);
 	/* Then specify whether we're halting for memory I/O and what the channel setup is */
-	gdb_outf("Using %shalting I/O, channels:", target_mem_access_needs_halt(target) ? "" : "non ");
+	gdb_outf("Using %shalting I/O, channels:", rtt_halt ? "" : "non ");
 	for (size_t channel = 0U; channel < MAX_RTT_CHAN; ++channel) {
 		if (rtt_channel_enabled[channel])
 			gdb_outf(" %u", (unsigned)channel);
@@ -708,6 +708,22 @@ static bool cmd_rtt(target_s *target, int argc, const char **argv)
 		return cmd_rtt_status(target);
 	if (!strncmp(command, "detect", command_len) && argc == 2)
 		return cmd_rtt_detect(target);
+	if (!strncmp(command, "halt", command_len) && argc == 3) {
+		const size_t value_len = strlen(argv[2]);
+		if (value_len && !strncmp(argv[2], "enable", value_len)) {
+			rtt_halt_override = true;
+			rtt_halt = true;
+		} else if (value_len && !strncmp(argv[2], "disable", value_len)) {
+			rtt_halt_override = true;
+			rtt_halt = false;
+		} else if (value_len && !strncmp(argv[2], "auto", value_len)) {
+			rtt_halt_override = false;
+			rtt_halt = false;
+		} else {
+			gdb_out("what?\n");
+		}
+		return true;
+	}
 	if (!strncmp(command, "channel", command_len)) {
 		/* Reset the enables */
 		for (size_t channel = 0; channel < MAX_RTT_CHAN; ++channel)

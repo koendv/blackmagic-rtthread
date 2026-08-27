@@ -34,7 +34,8 @@
 
 bool rtt_enabled = false;
 bool rtt_found = false;
-static bool rtt_halt = false; // true if rtt needs to halt target to access memory
+bool rtt_halt = false;          // true if rtt needs to halt target to access memory
+bool rtt_halt_override = false; // true if rtt_halt set by user
 uint32_t rtt_cbaddr = 0;
 uint32_t rtt_num_up_chan = 0;
 uint32_t rtt_num_down_chan = 0;
@@ -389,7 +390,7 @@ void poll_rtt(target_s *const cur_target)
 	uint32_t now = platform_time_ms();
 
 	if (last_poll_ms + rtt_poll_ms <= now || now < last_poll_ms) {
-		if (!rtt_found)
+		if (!rtt_found && !rtt_halt_override)
 			/* check if target needs to be halted during memory access */
 			rtt_halt = target_mem_access_needs_halt(cur_target);
 
