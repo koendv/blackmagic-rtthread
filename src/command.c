@@ -35,6 +35,7 @@
 #include "morse.h"
 #include "version.h"
 #include "jtagtap.h"
+#include "speedtest.h"
 
 #if CONFIG_BMDA == 0
 #include "jtag_scan.h"
@@ -156,6 +157,7 @@ static const command_s cmd_list[] = {
 #if CONFIG_BMDA == 1
 	{"shutdown_bmda", cmd_shutdown_bmda, "Tell the BMDA server to shut down when the GDB connection closes"},
 #endif
+	{"speedtest", cmd_speedtest, "Measure SWD/JTAG throughput: [COUNT [SIZE [ADDRESS]]]"},
 	{NULL, NULL, NULL},
 };
 
